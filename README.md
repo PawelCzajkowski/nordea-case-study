@@ -1,16 +1,16 @@
-# Kafka batch message service
+# Usługa przetwarzania wiadomości Kafka w partiach
 
-Java 21 and Spring Boot service for publishing versioned JSON Events over REST, processing Kafka records in batches, and exposing successfully processed messages from PostgreSQL.
+Usługa oparta na Javie 21 i Spring Boot, która publikuje wersjonowane zdarzenia (Event) w formacie JSON przez REST, przetwarza rekordy Kafka w partiach i udostępnia poprawnie przetworzone wiadomości (Processed message) zapisane w PostgreSQL.
 
-## Run locally
+## Uruchomienie lokalne
 
-Docker Compose starts the application, Kafka, and PostgreSQL:
+Docker Compose uruchamia aplikację, Kafka i PostgreSQL:
 
 ```bash
 docker compose up --build
 ```
 
-The API is available at `http://localhost:8080`. Set `JWT_ISSUER_URI` and `JWT_JWK_SET_URI` to an OAuth2/OIDC issuer that provides tokens with the `messages.write` and `messages.read` scopes. For example, export a suitable token as `TOKEN`, then publish an Event with a client-generated UUID:
+API jest dostępne pod adresem `http://localhost:8080`. Ustaw `JWT_ISSUER_URI` i `JWT_JWK_SET_URI` zgodnie z konfiguracją dostawcy OAuth2/OIDC, który wystawia tokeny z uprawnieniami `messages.write` i `messages.read`. Zapisz odpowiedni token w zmiennej środowiskowej `TOKEN`, a następnie opublikuj zdarzenie z UUID wygenerowanym przez klienta:
 
 ```bash
 curl -i -X POST http://localhost:8080/api/v1/events \
@@ -19,19 +19,19 @@ curl -i -X POST http://localhost:8080/api/v1/events \
   -d '{"messageId":"d3d7d41a-6a9c-49d7-8f5e-4c6a2f2f0c01","type":"customer.created","schemaVersion":"1","occurredAt":"2026-10-23T12:00:00Z","payload":{"customerId":"cust-42"}}'
 ```
 
-Publishing returns `202 Accepted` after Kafka confirms the record. Retrieve the processed Event with `GET /api/v1/messages?page=0&size=50`; results are ordered newest first. The token needs `messages.read` for retrieval. Public health and probe endpoints are available at `/actuator/health`, `/actuator/health/liveness`, and `/actuator/health/readiness`.
+Publikacja zwraca `202 Accepted` po potwierdzeniu przyjęcia rekordu przez Kafka. Przetworzone zdarzenia można pobrać przez `GET /api/v1/messages?page=0&size=50`; wyniki są uporządkowane od najnowszych. Odczyt wymaga tokenu z uprawnieniem `messages.read`. Publiczne endpointy stanu aplikacji i sond są dostępne pod adresami `/actuator/health`, `/actuator/health/liveness` i `/actuator/health/readiness`.
 
-Compose uses `local_dev_only` as a development-only PostgreSQL password. Override it with `DATABASE_PASSWORD` if desired; never reuse the demo credential outside local development.
+Compose używa hasła PostgreSQL `local_dev_only`, przeznaczonego wyłącznie do lokalnego środowiska developerskiego. Możesz je zmienić za pomocą `DATABASE_PASSWORD`. Nie używaj przykładowego hasła w innych środowiskach.
 
-### Local JWT mock
+### Lokalna atrapa JWT
 
-For manual API testing without an OAuth2/OIDC provider, activate the `local` Spring profile. In IntelliJ's application run configuration, set **Active profiles** to `local`, or add `SPRING_PROFILES_ACTIVE=local` to the environment variables. Set `DATABASE_PASSWORD` to the password used by the local PostgreSQL instance; when using Compose, use its configured password. Alternatively, with Java 21 and `DATABASE_PASSWORD` exported:
+Do ręcznego testowania API bez dostawcy OAuth2/OIDC włącz profil Springa `local`. W konfiguracji uruchomienia aplikacji w IntelliJ ustaw **Active profiles** na `local` lub dodaj zmienną środowiskową `SPRING_PROFILES_ACTIVE=local`. Ustaw `DATABASE_PASSWORD` na hasło lokalnej instancji PostgreSQL; jeśli korzystasz z Compose, użyj hasła skonfigurowanego dla tej instancji. Możesz też uruchomić aplikację poniższym poleceniem, korzystając z Javy 21 i ustawionej zmiennej środowiskowej `DATABASE_PASSWORD`:
 
 ```bash
 SPRING_PROFILES_ACTIVE=local mvn spring-boot:run
 ```
 
-This profile accepts the fixed bearer token `local-dev-token` as `local-developer` with the `messages.read` and `messages.write` scopes:
+Ten profil akceptuje stały token Bearer `local-dev-token` jako użytkownika `local-developer` z uprawnieniami `messages.read` i `messages.write`:
 
 ```bash
 export TOKEN=local-dev-token
@@ -39,23 +39,23 @@ curl -i http://localhost:8080/api/v1/messages \
   -H "Authorization: Bearer $TOKEN"
 ```
 
-The publishing example above works with the same token. Missing or different tokens receive `401 Unauthorized`. The local token is a mock, not a signed JWT; the mock decoder does not contact the configured issuer or JWK endpoint. Enable this profile only for local development. Without `local`, the application uses normal JWT validation. Kafka and PostgreSQL must still be running.
+Przykład publikacji podany powyżej działa z tym samym tokenem. Brak tokenu lub inny token powoduje odpowiedź `401 Unauthorized`. Lokalny token jest atrapą i nie zawiera podpisu JWT. Dekoder testowy nie łączy się ze skonfigurowanym dostawcą tożsamości ani endpointem JWK. Włączaj ten profil wyłącznie podczas lokalnego developmentu. Bez profilu `local` aplikacja korzysta ze standardowej walidacji JWT. Kafka i PostgreSQL muszą być uruchomione również przy korzystaniu z atrapy.
 
-## Configuration
+## Konfiguracja
 
-Defaults are in `src/main/resources/application.yml`. Environment variables override the Kafka broker, topic, consumer group, batch size, acknowledgement timeout, retry/DLQ settings, PostgreSQL URL and credentials, JWT issuer/JWK endpoint, and processed-message retention. `DATABASE_PASSWORD` is required and has no application default; Compose supplies it for local development, and Kubernetes reads it from the referenced Secret. Values are read at application start, so environment-specific settings can change without rebuilding the image.
+Wartości domyślne znajdują się w `src/main/resources/application.yml`. Zmienne środowiskowe pozwalają zmienić adres brokera Kafka, temat, grupę konsumentów, rozmiar partii, limit czasu oczekiwania na potwierdzenie, ustawienia ponowień i DLQ, adres i dane dostępowe PostgreSQL, dostawcę JWT i endpoint JWK oraz okres retencji przetworzonych wiadomości. `DATABASE_PASSWORD` jest wymagane i nie ma wartości domyślnej w aplikacji: lokalnie dostarcza je Compose, a Kubernetes odczytuje je ze wskazanego zasobu Secret. Wartości są odczytywane podczas startu aplikacji, dzięki czemu konfigurację środowiska można zmieniać bez ponownego budowania obrazu.
 
-PostgreSQL rounds `occurredAt` to microseconds in the read model. Identity fingerprints retain the original nanoseconds, so identical retries remain accepted while changes to the original timestamp still conflict. Kafka values that cannot be deserialized go directly to the dead-letter topic with `event: null`, the original key in `rawRecord.key`, and the original bytes encoded as Base64 in `rawRecord.value`. Failure metadata includes the source topic, partition, and offset. A Kafka tombstone has a null raw value. Other Events in the batch continue processing; the batch is acknowledged only after every outcome is durably stored or its dead-letter publication is confirmed.
+PostgreSQL zaokrągla `occurredAt` do mikrosekund w modelu odczytu. Skróty identyfikujące treść zdarzeń zachowują oryginalne nanosekundy, dlatego identyczne ponowienia są akceptowane, a zmiana oryginalnego znacznika czasu nadal powoduje konflikt. Wartości Kafka, których nie można zdeserializować, trafiają bezpośrednio do tematu DLQ z `event: null`, oryginalnym kluczem w `rawRecord.key` i oryginalnymi bajtami zakodowanymi w Base64 w `rawRecord.value`. Metadane błędu zawierają źródłowy temat, partycję i offset. Rekord usunięcia Kafka (tombstone) ma surową wartość `null`. Pozostałe zdarzenia w partii są dalej przetwarzane; partia jest potwierdzana dopiero po trwałym zapisaniu wyniku każdego zdarzenia lub potwierdzeniu jego publikacji do DLQ.
 
-## Kubernetes deployment
+## Wdrożenie na Kubernetes
 
-Kubernetes deploys only the application; Kafka and PostgreSQL must be provisioned separately and reachable from the cluster. The sample ConfigMap contains placeholder service and issuer addresses. Edit `k8s/configmap.yaml` for the target environment, then build and publish or load the image so the cluster can pull it:
+Manifesty Kubernetes wdrażają wyłącznie aplikację. Kafka i PostgreSQL muszą być przygotowane osobno i dostępne z klastra. Przykładowy ConfigMap zawiera adresy usług i dostawcy tożsamości, które należy zastąpić właściwymi wartościami. Dostosuj `k8s/configmap.yaml` do docelowego środowiska, a następnie zbuduj obraz i opublikuj go w rejestrze lub załaduj do klastra:
 
 ```bash
 docker build -t message-service:local .
 ```
 
-Create the pre-existing Secret referenced by the Deployment using values from your secret manager (do not commit credentials):
+Przed wdrożeniem aplikacji utwórz zasób Secret wskazany w Deployment, korzystając z wartości z menedżera sekretów. Nie zapisuj danych dostępowych w repozytorium:
 
 ```bash
 kubectl create secret generic message-service-secrets \
@@ -63,7 +63,7 @@ kubectl create secret generic message-service-secrets \
   --from-literal=DATABASE_PASSWORD='<database-password>'
 ```
 
-Apply the non-secret configuration and application resources:
+Zastosuj konfigurację bez sekretów oraz zasoby aplikacji:
 
 ```bash
 kubectl apply -f k8s/configmap.yaml
@@ -71,27 +71,27 @@ kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml
 kubectl rollout status deployment/message-service
 ```
 
-The Deployment uses the public readiness and liveness health groups. Kafka and PostgreSQL are external dependencies, not Kubernetes workloads in this project. After changing a ConfigMap value, apply it and restart the Deployment so the new environment is loaded:
+Deployment korzysta z publicznych grup stanu readiness i liveness. Kafka i PostgreSQL są zewnętrznymi zależnościami aplikacji i nie mają manifestów wdrożeniowych w tym projekcie. Po zmianie wartości w ConfigMap zastosuj konfigurację i zrestartuj Deployment, aby aplikacja odczytała nowe zmienne środowiskowe:
 
 ```bash
 kubectl apply -f k8s/configmap.yaml
 kubectl rollout restart deployment/message-service
 ```
 
-## Tests and coverage
+## Testy i pokrycie kodu
 
-Run the complete local Compose smoke test with:
+Uruchom pełny smoke test lokalnego środowiska Compose:
 
 ```bash
 bash scripts/smoke-test.sh
 ```
 
-The script builds an isolated environment, checks health/probes, authentication, publishing, processing, idempotency, and conflicts, then removes its containers and volumes. Use `--keep` to retain the environment. See the [smoke test guide](docs/smoke-test.md) for prerequisites, options, expected results, and the complete manual procedure.
+Skrypt buduje osobne środowisko, sprawdza stan aplikacji i sondy, uwierzytelnianie, publikację, przetwarzanie, idempotencję i konflikty, a następnie usuwa utworzone kontenery i wolumeny. Użyj `--keep`, aby zachować środowisko. [Instrukcja smoke testu](docs/smoke-test.md) opisuje wymagania, opcje, oczekiwane wyniki oraz pełną procedurę ręcznego wykonania wszystkich kroków.
 
-Run unit tests with `mvn test`. Integration tests use Testcontainers and require Docker. Full verification also generates a local JaCoCo HTML report:
+Testy uruchomisz poleceniem `mvn test`. Zestaw obejmuje testy jednostkowe oraz testy integracyjne korzystające z Testcontainers, które wymagają Dockera. Pełna weryfikacja generuje również lokalny raport JaCoCo w formacie HTML:
 
 ```bash
 mvn verify
 ```
 
-The report is written to `target/site/jacoco/index.html` and is not uploaded by the build.
+Raport jest zapisywany w `target/site/jacoco/index.html`. Proces budowania nie wysyła go do zewnętrznych serwisów.
