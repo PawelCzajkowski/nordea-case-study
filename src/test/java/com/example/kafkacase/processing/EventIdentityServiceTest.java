@@ -31,6 +31,11 @@ class EventIdentityServiceTest {
         public Optional<byte[]> findFingerprint(UUID messageId) {
             return Optional.ofNullable(identities.get(messageId));
         }
+
+        @Override
+        public int deleteRegisteredBefore(Instant cutoff) {
+            return 0;
+        }
     };
     private final EventIdentityService service = new EventIdentityService(store, new ObjectMapper());
 
