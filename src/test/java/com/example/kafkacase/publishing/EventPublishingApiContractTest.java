@@ -1,6 +1,7 @@
 package com.example.kafkacase.publishing;
 
 import com.example.kafkacase.event.Event;
+import com.example.kafkacase.processing.MessageContentConflictException;
 import com.example.kafkacase.security.SecurityConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -93,6 +94,19 @@ class EventPublishingApiContractTest {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(validEventJson()))
                 .andExpect(status().isServiceUnavailable());
+    }
+
+    @Test
+    void reusingProcessedMessageIdWithDifferentContentIsAConflict() throws Exception {
+        when(eventPublishingService.publish(any(Event.class)))
+                .thenThrow(new MessageContentConflictException(MESSAGE_ID));
+
+        mockMvc.perform(post("/api/v1/events")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .authorities(() -> "SCOPE_messages.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(validEventJson()))
+                .andExpect(status().isConflict());
     }
 
     private String validEventJson() {

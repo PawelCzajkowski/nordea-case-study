@@ -1,6 +1,7 @@
 package com.example.kafkacase.publishing;
 
 import com.example.kafkacase.event.Event;
+import com.example.kafkacase.processing.ProcessedMessageService;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.kafka.core.KafkaTemplate;
@@ -31,8 +32,11 @@ class EventPublishingServiceTest {
                 JsonNodeFactory.instance.objectNode().put("customerId", "c-123"));
         CompletableFuture<SendResult<String, Event>> acknowledgement = new CompletableFuture<>();
         when(kafkaTemplate.send("configured-events", MESSAGE_ID.toString(), event)).thenReturn(acknowledgement);
+        ProcessedMessageService processedMessageService = mock(ProcessedMessageService.class);
+        when(processedMessageService.registerForPublication(event)).thenReturn(true);
         EventPublishingService service = new EventPublishingService(kafkaTemplate,
-                new KafkaPublishingProperties("configured-events", Duration.ofSeconds(2)));
+                new KafkaPublishingProperties("configured-events", Duration.ofSeconds(2)),
+                processedMessageService);
 
         CompletableFuture<UUID> publication = CompletableFuture.supplyAsync(() -> service.publish(event));
 
@@ -49,8 +53,11 @@ class EventPublishingServiceTest {
         KafkaTemplate<String, Event> kafkaTemplate = mock(KafkaTemplate.class);
         Event event = new Event(MESSAGE_ID, "customer.updated", "1.0", Instant.parse("2026-10-24T10:15:30Z"),
                 JsonNodeFactory.instance.objectNode().put("customerId", "c-123"));
+        ProcessedMessageService processedMessageService = mock(ProcessedMessageService.class);
+        when(processedMessageService.registerForPublication(event)).thenReturn(true);
         EventPublishingService service = new EventPublishingService(kafkaTemplate,
-                new KafkaPublishingProperties("configured-events", Duration.ofMillis(20)));
+                new KafkaPublishingProperties("configured-events", Duration.ofMillis(20)),
+                processedMessageService);
 
         when(kafkaTemplate.send("configured-events", MESSAGE_ID.toString(), event))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("broker unavailable")));
