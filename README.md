@@ -23,6 +23,24 @@ Publishing returns `202 Accepted` after Kafka confirms the record. Retrieve the 
 
 Compose uses `local_dev_only` as a development-only PostgreSQL password. Override it with `DATABASE_PASSWORD` if desired; never reuse the demo credential outside local development.
 
+### Local JWT mock
+
+For manual API testing without an OAuth2/OIDC provider, activate the `local` Spring profile. In IntelliJ's application run configuration, set **Active profiles** to `local`, or add `SPRING_PROFILES_ACTIVE=local` to the environment variables. Alternatively, with Java 21:
+
+```bash
+SPRING_PROFILES_ACTIVE=local mvn spring-boot:run
+```
+
+This profile accepts the fixed bearer token `local-dev-token` as `local-developer` with the `messages.read` and `messages.write` scopes:
+
+```bash
+export TOKEN=local-dev-token
+curl -i http://localhost:8080/api/v1/messages \
+  -H "Authorization: Bearer $TOKEN"
+```
+
+The publishing example above works with the same token. Missing or different tokens receive `401 Unauthorized`. The local token is a mock, not a signed JWT; the mock decoder does not contact the configured issuer or JWK endpoint. Enable this profile only for local development. Without `local`, the application uses normal JWT validation. Kafka and PostgreSQL must still be running.
+
 ## Configuration
 
 Defaults are in `src/main/resources/application.yml`. Environment variables override the Kafka broker, topic, consumer group, batch size, acknowledgement timeout, retry/DLQ settings, PostgreSQL URL and credentials, JWT issuer/JWK endpoint, and processed-message retention. Values are read at application start, so environment-specific settings can change without rebuilding the image.
