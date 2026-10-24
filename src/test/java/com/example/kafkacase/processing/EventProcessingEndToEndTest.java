@@ -5,19 +5,23 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors;
+import org.springframework.test.annotation.DirtiesContext;
 import org.springframework.test.context.DynamicPropertyRegistry;
 import org.springframework.test.context.DynamicPropertySource;
 import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
-import org.testcontainers.containers.PostgreSQLContainer;
 
+import java.sql.Timestamp;
 import java.time.Duration;
+import java.time.Instant;
 import java.util.UUID;
 
 import static org.awaitility.Awaitility.await;
@@ -29,6 +33,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 @SpringBootTest
 @AutoConfigureMockMvc
 @Testcontainers
+@DirtiesContext(classMode = DirtiesContext.ClassMode.AFTER_CLASS)
 class EventProcessingEndToEndTest {
     private static final String TOPIC = "case-study-integration-events";
 
@@ -46,10 +51,15 @@ class EventProcessingEndToEndTest {
         registry.add("spring.datasource.username", POSTGRES::getUsername);
         registry.add("spring.datasource.password", POSTGRES::getPassword);
         registry.add("app.kafka.topic", () -> TOPIC);
+        registry.add("app.processing.retention-period", () -> "30d");
+        registry.add("app.processing.retention-cleanup-interval", () -> "100");
     }
 
     @Autowired
     private MockMvc mockMvc;
+
+    @Autowired
+    private JdbcTemplate jdbcTemplate;
 
     @MockitoBean
     private JwtDecoder jwtDecoder;
@@ -123,6 +133,31 @@ class EventProcessingEndToEndTest {
                                 .authorities(() -> "SCOPE_messages.read")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.content[0].messageId").value(messageId.toString()));
+
+        jdbcTemplate.update(
+                "UPDATE processed_messages SET received_at = ? WHERE message_id = ?",
+                Timestamp.from(Instant.now().minus(Duration.ofDays(31))),
+                messageId);
+        jdbcTemplate.update(
+                "UPDATE event_identities SET registered_at = ? WHERE message_id = ?",
+                Timestamp.from(Instant.now().minus(Duration.ofDays(31))),
+                messageId);
+
+        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+                mockMvc.perform(get("/api/v1/messages?page=0&size=100")
+                                .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                        .authorities(() -> "SCOPE_messages.read")))
+                        .andExpect(status().isOk())
+                        .andExpect(jsonPath("$.totalElements").value(1))
+                        .andExpect(jsonPath("$.content[?(@.messageId == '" + messageId + "')]").doesNotExist())
+                        .andExpect(jsonPath("$.content[?(@.messageId == '" + newerMessageId + "')]").exists()));
+
+        mockMvc.perform(post("/api/v1/events")
+                        .with(SecurityMockMvcRequestPostProcessors.jwt()
+                                .authorities(() -> "SCOPE_messages.write"))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(eventJson(messageId, "c-after-retention")))
+                .andExpect(status().isAccepted());
     }
 
     private String eventJson(UUID messageId, String customerId) {

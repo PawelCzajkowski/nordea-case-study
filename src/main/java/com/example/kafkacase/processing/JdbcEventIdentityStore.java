@@ -3,6 +3,8 @@ package com.example.kafkacase.processing;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
 
+import java.sql.Timestamp;
+import java.time.Instant;
 import java.util.Optional;
 import java.util.UUID;
 
@@ -29,5 +31,12 @@ public class JdbcEventIdentityStore implements EventIdentityStore {
     public Optional<byte[]> findFingerprint(UUID messageId) {
         return jdbcTemplate.query("SELECT fingerprint FROM event_identities WHERE message_id = ?",
                 result -> result.next() ? Optional.of(result.getBytes("fingerprint")) : Optional.empty(), messageId);
+    }
+
+    @Override
+    public int deleteRegisteredBefore(Instant cutoff) {
+        return jdbcTemplate.update(
+                "DELETE FROM event_identities WHERE registered_at < ?",
+                Timestamp.from(cutoff));
     }
 }

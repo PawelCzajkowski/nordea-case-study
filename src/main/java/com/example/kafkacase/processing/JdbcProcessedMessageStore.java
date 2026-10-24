@@ -67,6 +67,13 @@ public class JdbcProcessedMessageStore implements ProcessedMessageStore {
         return new ProcessedMessagePage(content, totalElements == null ? 0 : totalElements);
     }
 
+    @Override
+    public int deleteReceivedBefore(Instant cutoff) {
+        return jdbcTemplate.update(
+                "DELETE FROM processed_messages WHERE received_at < ?",
+                Timestamp.from(cutoff));
+    }
+
     private ProcessedMessage mapRow(ResultSet result, int rowNumber) throws SQLException {
         try {
             Event event = new Event(

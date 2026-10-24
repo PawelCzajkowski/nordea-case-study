@@ -12,4 +12,6 @@ public interface ProcessedMessageStore {
     Optional<ProcessedMessage> findByMessageId(UUID messageId);
 
     ProcessedMessagePage findPage(int page, int size);
+
+    int deleteReceivedBefore(Instant cutoff);
 }
