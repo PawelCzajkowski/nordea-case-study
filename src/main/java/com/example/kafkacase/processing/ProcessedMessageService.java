@@ -5,6 +5,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.Clock;
+import java.time.temporal.ChronoUnit;
 
 @Service
 public class ProcessedMessageService {
@@ -24,7 +25,7 @@ public class ProcessedMessageService {
         store.insertIfAbsent(event, clock.instant());
         ProcessedMessage processed = store.findByMessageId(event.messageId())
                 .orElseThrow(() -> new IllegalStateException("Persisted Event could not be read back"));
-        if (!processed.event().equals(event)) {
+        if (!matchesStoredEvent(processed.event(), event)) {
             throw new MessageContentConflictException(event.messageId());
         }
         return processed;
@@ -37,7 +38,7 @@ public class ProcessedMessageService {
         if (processed.isEmpty()) {
             return true;
         }
-        if (!processed.orElseThrow().event().equals(event)) {
+        if (!matchesStoredEvent(processed.orElseThrow().event(), event)) {
             throw new MessageContentConflictException(event.messageId());
         }
         return false;
@@ -46,6 +47,13 @@ public class ProcessedMessageService {
     @Transactional(readOnly = true)
     public ProcessedMessagePage findPage(int page, int size) {
         return store.findPage(page, size);
+    }
+
+    private boolean matchesStoredEvent(Event stored, Event original) {
+        // PostgreSQL/JDBC round timestamps to microseconds; the identity fingerprint retains the original nanoseconds.
+        var storedTimestamp = original.occurredAt().plusNanos(500).truncatedTo(ChronoUnit.MICROS);
+        return stored.equals(new Event(original.messageId(), original.type(), original.schemaVersion(),
+                storedTimestamp, original.payload()));
     }
 
 }

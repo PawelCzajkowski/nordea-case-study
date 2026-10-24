@@ -25,7 +25,8 @@ public class KafkaDeadLetterPublisher implements DeadLetterPublisher {
     @Override
     public void publish(DeadLetterMessage message) {
         try {
-            kafkaTemplate.send(deadLetterProperties.topic(), message.event().messageId().toString(), message)
+            String key = message.event() == null ? message.rawRecord().key() : message.event().messageId().toString();
+            kafkaTemplate.send(deadLetterProperties.topic(), key, message)
                     .get(publishingProperties.ackTimeout().toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();

@@ -4,6 +4,9 @@ import com.example.kafkacase.event.Event;
 import com.example.kafkacase.publishing.KafkaPublishingProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.NullAndEmptySource;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.kafka.support.SendResult;
 
@@ -46,6 +49,20 @@ class KafkaDeadLetterPublisherTest {
                 .thenReturn(confirmation);
 
         assertThrows(DeadLetterPublicationException.class, () -> publisher.publish(message));
+    }
+
+    @ParameterizedTest
+    @NullAndEmptySource
+    @ValueSource(strings = "malformed-key")
+    void publishesMalformedRecordWithoutAnEventUsingItsOriginalKey(String key) {
+        var message = new DeadLetterMessage(null, message().failure(),
+                new DeadLetterMessage.RawRecord(key, new byte[]{'{', (byte) 0xff}));
+        when(kafkaTemplate.send("case-events.dead-letter", key, message))
+                .thenReturn(CompletableFuture.completedFuture(null));
+
+        publisher.publish(message);
+
+        verify(kafkaTemplate).send("case-events.dead-letter", key, message);
     }
 
     private DeadLetterMessage message() {

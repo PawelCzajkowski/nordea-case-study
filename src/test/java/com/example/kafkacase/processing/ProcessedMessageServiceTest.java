@@ -3,6 +3,8 @@ package com.example.kafkacase.processing;
 import com.example.kafkacase.event.Event;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 
 import java.time.Instant;
 import java.time.Clock;
@@ -11,6 +13,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertThrows;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
@@ -43,6 +46,23 @@ class ProcessedMessageServiceTest {
         when(store.findByMessageId(MESSAGE_ID)).thenReturn(Optional.of(existing));
 
         assertEquals(existing, service.process(event));
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+            "2026-10-23T12:00:00.123456789Z, 2026-10-23T12:00:00.123457Z",
+            "2026-10-23T12:00:00.123456123Z, 2026-10-23T12:00:00.123456Z",
+            "2026-10-23T12:00:00.999999789Z, 2026-10-23T12:00:01Z"
+    })
+    void processingAndRepublishingAcceptTheSameEventAfterDatabaseTimestampRounding(
+            Instant originalTime, Instant storedTime) {
+        Event original = new Event(MESSAGE_ID, "customer.updated", "1.0", originalTime, event("customer-42").payload());
+        Event stored = new Event(MESSAGE_ID, original.type(), original.schemaVersion(), storedTime, original.payload());
+        ProcessedMessage processed = new ProcessedMessage(stored, RECEIVED_AT);
+        when(store.findByMessageId(MESSAGE_ID)).thenReturn(Optional.of(processed));
+
+        assertEquals(processed, service.process(original));
+        assertFalse(service.registerForPublication(original));
     }
 
     @Test

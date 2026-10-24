@@ -6,6 +6,9 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
+import org.springframework.kafka.support.serializer.DeserializationException;
+import org.springframework.kafka.support.serializer.SerializationUtils;
+import org.springframework.core.log.LogAccessor;
 import org.springframework.stereotype.Component;
 
 import java.time.Clock;
@@ -14,6 +17,7 @@ import java.util.List;
 @Component
 public class EventBatchConsumer {
     private static final Logger LOGGER = LoggerFactory.getLogger(EventBatchConsumer.class);
+    private static final LogAccessor DESERIALIZATION_LOGGER = new LogAccessor(EventBatchConsumer.class);
 
     private final ProcessedMessageService processedMessageService;
     private final DeadLetterPublisher deadLetterPublisher;
@@ -34,23 +38,36 @@ public class EventBatchConsumer {
     public void processBatch(List<ConsumerRecord<String, Event>> records, Acknowledgment acknowledgment) {
         RuntimeException batchFailure = null;
         for (ConsumerRecord<String, Event> record : records) {
-            RuntimeException processingFailure = processWithRetries(record.value());
+            DeserializationException deserializationFailure = SerializationUtils.getExceptionFromHeader(record,
+                    SerializationUtils.VALUE_DESERIALIZER_EXCEPTION_HEADER, DESERIALIZATION_LOGGER);
+            RuntimeException processingFailure;
+            int attempts;
+            if (deserializationFailure != null) {
+                processingFailure = deserializationFailure;
+                attempts = 1;
+            } else if (record.value() == null) {
+                processingFailure = new IllegalArgumentException("Kafka record contains no Event value");
+                attempts = 1;
+            } else {
+                processingFailure = processWithRetries(record.value());
+                attempts = retryProperties.maxAttempts();
+            }
             if (processingFailure == null) {
                 continue;
             }
 
-            LOGGER.warn("Event {} failed after {} attempts ({}): {}",
-                    record.value().messageId(), retryProperties.maxAttempts(),
+            LOGGER.warn("Record {}-{}@{} failed after {} attempts ({}): {}",
+                    record.topic(), record.partition(), record.offset(), attempts,
                     processingFailure.getClass().getSimpleName(), failureReason(processingFailure));
-            DeadLetterMessage message = deadLetterMessage(record, processingFailure);
+            DeadLetterMessage message = deadLetterMessage(record, processingFailure, attempts, deserializationFailure);
             try {
                 deadLetterPublisher.publish(message);
             } catch (RuntimeException publicationFailure) {
-                LOGGER.error("Could not publish Event {} to the dead-letter topic; batch will be replayed",
-                        record.value().messageId(), publicationFailure);
+                LOGGER.error("Could not publish record {}-{}@{} to the dead-letter topic; batch will be replayed",
+                        record.topic(), record.partition(), record.offset(), publicationFailure);
                 if (batchFailure == null) {
                     batchFailure = publicationFailure;
-                } else {
+                } else if (batchFailure != publicationFailure) {
                     batchFailure.addSuppressed(publicationFailure);
                 }
             }
@@ -75,15 +92,20 @@ public class EventBatchConsumer {
         }
     }
 
-    private DeadLetterMessage deadLetterMessage(ConsumerRecord<String, Event> record, RuntimeException failure) {
+    private DeadLetterMessage deadLetterMessage(ConsumerRecord<String, Event> record, RuntimeException failure,
+                                                int attempts, DeserializationException deserializationFailure) {
+        DeadLetterMessage.RawRecord rawRecord = record.value() == null
+                ? new DeadLetterMessage.RawRecord(record.key(),
+                        deserializationFailure == null ? null : deserializationFailure.getData())
+                : null;
         return new DeadLetterMessage(record.value(), new DeadLetterMessage.FailureMetadata(
-                retryProperties.maxAttempts(),
+                attempts,
                 failure.getClass().getName(),
                 failureReason(failure),
                 clock.instant(),
                 record.topic(),
                 record.partition(),
-                record.offset()));
+                record.offset()), rawRecord);
     }
 
     private String failureReason(RuntimeException failure) {

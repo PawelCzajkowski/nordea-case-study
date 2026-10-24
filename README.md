@@ -45,6 +45,8 @@ The publishing example above works with the same token. Missing or different tok
 
 Defaults are in `src/main/resources/application.yml`. Environment variables override the Kafka broker, topic, consumer group, batch size, acknowledgement timeout, retry/DLQ settings, PostgreSQL URL and credentials, JWT issuer/JWK endpoint, and processed-message retention. `DATABASE_PASSWORD` is required and has no application default; Compose supplies it for local development, and Kubernetes reads it from the referenced Secret. Values are read at application start, so environment-specific settings can change without rebuilding the image.
 
+PostgreSQL rounds `occurredAt` to microseconds in the read model. Identity fingerprints retain the original nanoseconds, so identical retries remain accepted while changes to the original timestamp still conflict. Kafka values that cannot be deserialized go directly to the dead-letter topic with `event: null`, the original key in `rawRecord.key`, and the original bytes encoded as Base64 in `rawRecord.value`. Failure metadata includes the source topic, partition, and offset. A Kafka tombstone has a null raw value. Other Events in the batch continue processing; the batch is acknowledged only after every outcome is durably stored or its dead-letter publication is confirmed.
+
 ## Kubernetes deployment
 
 Kubernetes deploys only the application; Kafka and PostgreSQL must be provisioned separately and reachable from the cluster. The sample ConfigMap contains placeholder service and issuer addresses. Edit `k8s/configmap.yaml` for the target environment, then build and publish or load the image so the cluster can pull it:
