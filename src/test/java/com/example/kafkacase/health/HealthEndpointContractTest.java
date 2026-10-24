@@ -14,7 +14,11 @@ import org.springframework.test.context.support.DependencyInjectionTestExecution
 import org.springframework.test.context.web.ServletTestExecutionListener;
 import org.springframework.test.web.servlet.MockMvc;
 
-@SpringBootTest
+@SpringBootTest(properties = {
+        "spring.flyway.enabled=false",
+        "spring.kafka.listener.auto-startup=false",
+        "management.health.db.enabled=false"
+})
 @AutoConfigureMockMvc
 @TestExecutionListeners(
         listeners = {ServletTestExecutionListener.class, DependencyInjectionTestExecutionListener.class},

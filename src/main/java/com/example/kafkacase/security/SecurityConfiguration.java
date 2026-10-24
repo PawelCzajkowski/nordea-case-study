@@ -17,6 +17,7 @@ public class SecurityConfiguration {
                 .authorizeHttpRequests(authorize -> authorize
                         .requestMatchers("/actuator/health/**").permitAll()
                         .requestMatchers(HttpMethod.POST, "/api/v1/events").hasAuthority("SCOPE_messages.write")
+                        .requestMatchers(HttpMethod.GET, "/api/v1/messages").hasAuthority("SCOPE_messages.read")
                         .requestMatchers("/api/**").authenticated()
                         .anyRequest().permitAll())
                 .oauth2ResourceServer(resourceServer -> resourceServer.jwt(Customizer.withDefaults()))
