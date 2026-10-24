@@ -9,7 +9,11 @@ import java.time.Clock;
 
 @Configuration
 @EnableScheduling
-@EnableConfigurationProperties(ProcessedMessageRetentionProperties.class)
+@EnableConfigurationProperties({
+        ProcessedMessageRetentionProperties.class,
+        ProcessingRetryProperties.class,
+        DeadLetterProperties.class
+})
 public class ProcessingConfiguration {
     @Bean
     Clock systemClock() {

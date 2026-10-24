@@ -2,25 +2,104 @@ package com.example.kafkacase.processing;
 
 import com.example.kafkacase.event.Event;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.kafka.support.Acknowledgment;
 import org.springframework.stereotype.Component;
 
+import java.time.Clock;
 import java.util.List;
 
 @Component
 public class EventBatchConsumer {
-    private final ProcessedMessageService processedMessageService;
+    private static final Logger LOGGER = LoggerFactory.getLogger(EventBatchConsumer.class);
 
-    public EventBatchConsumer(ProcessedMessageService processedMessageService) {
+    private final ProcessedMessageService processedMessageService;
+    private final DeadLetterPublisher deadLetterPublisher;
+    private final ProcessingRetryProperties retryProperties;
+    private final Clock clock;
+
+    public EventBatchConsumer(ProcessedMessageService processedMessageService,
+                              DeadLetterPublisher deadLetterPublisher,
+                              ProcessingRetryProperties retryProperties,
+                              Clock clock) {
         this.processedMessageService = processedMessageService;
+        this.deadLetterPublisher = deadLetterPublisher;
+        this.retryProperties = retryProperties;
+        this.clock = clock;
     }
 
     @KafkaListener(topics = "${app.kafka.topic}", groupId = "${spring.kafka.consumer.group-id}")
     public void processBatch(List<ConsumerRecord<String, Event>> records, Acknowledgment acknowledgment) {
+        RuntimeException batchFailure = null;
         for (ConsumerRecord<String, Event> record : records) {
-            processedMessageService.process(record.value());
+            RuntimeException processingFailure = processWithRetries(record.value());
+            if (processingFailure == null) {
+                continue;
+            }
+
+            LOGGER.warn("Event {} failed after {} attempts ({}): {}",
+                    record.value().messageId(), retryProperties.maxAttempts(),
+                    processingFailure.getClass().getSimpleName(), failureReason(processingFailure));
+            DeadLetterMessage message = deadLetterMessage(record, processingFailure);
+            try {
+                deadLetterPublisher.publish(message);
+            } catch (RuntimeException publicationFailure) {
+                LOGGER.error("Could not publish Event {} to the dead-letter topic; batch will be replayed",
+                        record.value().messageId(), publicationFailure);
+                if (batchFailure == null) {
+                    batchFailure = publicationFailure;
+                } else {
+                    batchFailure.addSuppressed(publicationFailure);
+                }
+            }
+        }
+        if (batchFailure != null) {
+            throw batchFailure;
         }
         acknowledgment.acknowledge();
+    }
+
+    private RuntimeException processWithRetries(Event event) {
+        for (int attempt = 1; ; attempt++) {
+            try {
+                processedMessageService.process(event);
+                return null;
+            } catch (RuntimeException failure) {
+                if (attempt >= retryProperties.maxAttempts()) {
+                    return failure;
+                }
+                pauseBeforeRetry();
+            }
+        }
+    }
+
+    private DeadLetterMessage deadLetterMessage(ConsumerRecord<String, Event> record, RuntimeException failure) {
+        return new DeadLetterMessage(record.value(), new DeadLetterMessage.FailureMetadata(
+                retryProperties.maxAttempts(),
+                failure.getClass().getName(),
+                failureReason(failure),
+                clock.instant(),
+                record.topic(),
+                record.partition(),
+                record.offset()));
+    }
+
+    private String failureReason(RuntimeException failure) {
+        return failure.getMessage() == null ? failure.getClass().getSimpleName() : failure.getMessage();
+    }
+
+    private void pauseBeforeRetry() {
+        var backoff = retryProperties.backoff();
+        if (backoff.isZero()) {
+            return;
+        }
+        try {
+            Thread.sleep(backoff.toMillis(), backoff.toNanosPart() % 1_000_000);
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("Interrupted while waiting before retrying an Event", interrupted);
+        }
     }
 }
