@@ -1,0 +1,17 @@
+# Docker Compose 2.24.4+; use together with docker-compose.yml.
+services:
+  postgres:
+    ports: !reset []
+
+  kafka:
+    ports: !reset []
+
+  app:
+    image: message-service-smoke:${SMOKE_PROJECT_NAME:-manual}
+    environment:
+      SPRING_PROFILES_ACTIVE: local
+    ports: !override
+      - target: 8080
+        host_ip: 127.0.0.1
+        published: "${SMOKE_PORT:-0}"
+        protocol: tcp

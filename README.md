@@ -80,6 +80,14 @@ kubectl rollout restart deployment/message-service
 
 ## Tests and coverage
 
+Run the complete local Compose smoke test with:
+
+```bash
+bash scripts/smoke-test.sh
+```
+
+The script builds an isolated environment, checks health/probes, authentication, publishing, processing, idempotency, and conflicts, then removes its containers and volumes. Use `--keep` to retain the environment. See the [smoke test guide](docs/smoke-test.md) for prerequisites, options, expected results, and the complete manual procedure.
+
 Run unit tests with `mvn test`. Integration tests use Testcontainers and require Docker. Full verification also generates a local JaCoCo HTML report:
 
 ```bash
