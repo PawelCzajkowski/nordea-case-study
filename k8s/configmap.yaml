@@ -1,0 +1,20 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: message-service-config
+data:
+  SERVER_PORT: "8080"
+  KAFKA_BOOTSTRAP_SERVERS: "kafka.example.internal:9092"
+  KAFKA_TOPIC: "events"
+  KAFKA_CONSUMER_GROUP_ID: "message-service"
+  KAFKA_BATCH_SIZE: "100"
+  KAFKA_ACK_TIMEOUT: "10s"
+  KAFKA_DEAD_LETTER_TOPIC: "events.dlq"
+  KAFKA_PROCESSING_RETRY_MAX_ATTEMPTS: "3"
+  KAFKA_PROCESSING_RETRY_BACKOFF: "250ms"
+  DATABASE_URL: "jdbc:postgresql://postgres.example.internal:5432/messages"
+  DATABASE_POOL_SIZE: "10"
+  JWT_ISSUER_URI: "https://issuer.example.com/"
+  JWT_JWK_SET_URI: "https://issuer.example.com/.well-known/jwks.json"
+  PROCESSED_MESSAGE_RETENTION_PERIOD: "30d"
+  PROCESSED_MESSAGE_RETENTION_CLEANUP_INTERVAL: "1h"
