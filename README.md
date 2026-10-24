@@ -25,7 +25,7 @@ Compose uses `local_dev_only` as a development-only PostgreSQL password. Overrid
 
 ### Local JWT mock
 
-For manual API testing without an OAuth2/OIDC provider, activate the `local` Spring profile. In IntelliJ's application run configuration, set **Active profiles** to `local`, or add `SPRING_PROFILES_ACTIVE=local` to the environment variables. Alternatively, with Java 21:
+For manual API testing without an OAuth2/OIDC provider, activate the `local` Spring profile. In IntelliJ's application run configuration, set **Active profiles** to `local`, or add `SPRING_PROFILES_ACTIVE=local` to the environment variables. Set `DATABASE_PASSWORD` to the password used by the local PostgreSQL instance; when using Compose, use its configured password. Alternatively, with Java 21 and `DATABASE_PASSWORD` exported:
 
 ```bash
 SPRING_PROFILES_ACTIVE=local mvn spring-boot:run
@@ -43,7 +43,7 @@ The publishing example above works with the same token. Missing or different tok
 
 ## Configuration
 
-Defaults are in `src/main/resources/application.yml`. Environment variables override the Kafka broker, topic, consumer group, batch size, acknowledgement timeout, retry/DLQ settings, PostgreSQL URL and credentials, JWT issuer/JWK endpoint, and processed-message retention. Values are read at application start, so environment-specific settings can change without rebuilding the image.
+Defaults are in `src/main/resources/application.yml`. Environment variables override the Kafka broker, topic, consumer group, batch size, acknowledgement timeout, retry/DLQ settings, PostgreSQL URL and credentials, JWT issuer/JWK endpoint, and processed-message retention. `DATABASE_PASSWORD` is required and has no application default; Compose supplies it for local development, and Kubernetes reads it from the referenced Secret. Values are read at application start, so environment-specific settings can change without rebuilding the image.
 
 ## Kubernetes deployment
 

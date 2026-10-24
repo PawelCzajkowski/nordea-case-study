@@ -28,7 +28,7 @@ spring:
   datasource:
     url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/messages}
     username: ${DATABASE_USERNAME:message_service}
-    password: ${DATABASE_PASSWORD:message_service}
+    password: ${DATABASE_PASSWORD}
     hikari:
       maximum-pool-size: ${DATABASE_POOL_SIZE:10}
   flyway:
