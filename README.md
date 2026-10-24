@@ -15,7 +15,7 @@ The API is available at `http://localhost:8080`. Provide a JWT from an OAuth2/OI
 Publish an event with a client-generated UUID so retries can be idempotent:
 
 ```bash
-curl -i -X POST http://localhost:8080/api/messages \
+curl -i -X POST http://localhost:8080/api/v1/events \
   -H "Authorization: Bearer $TOKEN" \
   -H 'Content-Type: application/json' \
   -d '{"messageId":"d3d7d41a-6a9c-49d7-8f5e-4c6a2f2f0c01","type":"customer.created","schemaVersion":"1","occurredAt":"2026-10-23T12:00:00Z","payload":{"customerId":"cust-42"}}'
