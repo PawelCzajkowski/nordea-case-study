@@ -1,0 +1,74 @@
+spring:
+  application:
+    name: kafka-batch-message-service
+  kafka:
+    bootstrap-servers: ${KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JsonSerializer
+      acks: all
+      properties:
+        enable.idempotence: true
+        spring.json.add.type.headers: false
+    consumer:
+      group-id: ${KAFKA_CONSUMER_GROUP_ID:message-service}
+      auto-offset-reset: earliest
+      enable-auto-commit: false
+      max-poll-records: ${KAFKA_BATCH_SIZE:100}
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        spring.deserializer.value.delegate.class: org.springframework.kafka.support.serializer.JsonDeserializer
+        spring.json.value.default.type: com.example.kafkacase.event.Event
+        spring.json.trusted.packages: com.example.kafkacase.event
+        spring.json.use.type.headers: false
+    listener:
+      type: batch
+      ack-mode: manual
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/messages}
+    username: ${DATABASE_USERNAME:message_service}
+    password: ${DATABASE_PASSWORD}
+    hikari:
+      maximum-pool-size: ${DATABASE_POOL_SIZE:10}
+  flyway:
+    enabled: true
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: ${JWT_ISSUER_URI:https://issuer.example.invalid}
+          jwk-set-uri: ${JWT_JWK_SET_URI:https://issuer.example.invalid/.well-known/jwks.json}
+
+app:
+  kafka:
+    topic: ${KAFKA_TOPIC:events}
+    ack-timeout: ${KAFKA_ACK_TIMEOUT:10s}
+    dead-letter:
+      topic: ${KAFKA_DEAD_LETTER_TOPIC:events.dlq}
+    processing:
+      retry:
+        max-attempts: ${KAFKA_PROCESSING_RETRY_MAX_ATTEMPTS:3}
+        backoff: ${KAFKA_PROCESSING_RETRY_BACKOFF:250ms}
+  processing:
+    retention-period: ${PROCESSED_MESSAGE_RETENTION_PERIOD:30d}
+    retention-cleanup-interval: ${PROCESSED_MESSAGE_RETENTION_CLEANUP_INTERVAL:1h}
+
+server:
+  port: ${SERVER_PORT:8080}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health
+  endpoint:
+    health:
+      show-details: never
+      probes:
+        enabled: true
+  health:
+    livenessstate:
+      enabled: true
+    readinessstate:
+      enabled: true
