@@ -44,6 +44,12 @@ app:
   kafka:
     topic: ${KAFKA_TOPIC:events}
     ack-timeout: ${KAFKA_ACK_TIMEOUT:10s}
+    dead-letter:
+      topic: ${KAFKA_DEAD_LETTER_TOPIC:events.dlq}
+    processing:
+      retry:
+        max-attempts: ${KAFKA_PROCESSING_RETRY_MAX_ATTEMPTS:3}
+        backoff: ${KAFKA_PROCESSING_RETRY_BACKOFF:250ms}
   processing:
     retention-period: ${PROCESSED_MESSAGE_RETENTION_PERIOD:30d}
     retention-cleanup-interval: ${PROCESSED_MESSAGE_RETENTION_CLEANUP_INTERVAL:1h}
