@@ -16,6 +16,8 @@ import static org.junit.jupiter.api.Assertions.assertThrows;
 
 class EventIdentityServiceTest {
     private static final UUID MESSAGE_ID = UUID.fromString("4a4ce384-2bd6-49c4-8777-a0fbba178f39");
+
+    // Keep real identity comparisons while replacing database access with an isolated in-memory ledger.
     private final Map<UUID, byte[]> identities = new HashMap<>();
     private final EventIdentityStore store = new EventIdentityStore() {
         @Override
@@ -23,7 +25,9 @@ class EventIdentityServiceTest {
             if (identities.containsKey(messageId)) {
                 return false;
             }
+
             identities.put(messageId, Arrays.copyOf(fingerprint, fingerprint.length));
+
             return true;
         }
 
@@ -37,19 +41,23 @@ class EventIdentityServiceTest {
             return 0;
         }
     };
+
     private final EventIdentityService service = new EventIdentityService(store, new ObjectMapper());
 
     @Test
     void identicalEventWithReorderedPayloadFieldsIsAcceptedAsTheSameIdentity() {
+        // JSON object field order changes without changing the Event's content.
         Event first = event("{\"customerId\":\"c-123\",\"active\":true}");
         Event retry = event("{\"active\":true,\"customerId\":\"c-123\"}");
 
         service.register(first);
+
         assertDoesNotThrow(() -> service.register(retry));
     }
 
     @Test
     void differentContentCannotReuseAnExistingMessageId() {
+        // Reserve the UUID before attempting to associate it with a different customer.
         service.register(event("{\"customerId\":\"c-123\"}"));
 
         assertThrows(MessageContentConflictException.class,

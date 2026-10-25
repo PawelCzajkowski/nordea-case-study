@@ -45,8 +45,10 @@ class LocalJwtSecurityTest {
 
     @Test
     void localBearerTokenCanReadMessagesWithoutAnIdentityProvider() throws Exception {
+        // Supply an empty read model so this scenario focuses on local token authentication.
         when(processedMessageService.findPage(0, 50)).thenReturn(new ProcessedMessagePage(List.of(), 0));
 
+        // Send the actual bearer token through the security filter chain.
         mockMvc.perform(get("/api/v1/messages")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer local-dev-token"))
                 .andExpect(status().isOk())
@@ -60,6 +62,7 @@ class LocalJwtSecurityTest {
         UUID messageId = UUID.fromString("f8809d9e-0b82-4d65-8720-f70a23110fd3");
         when(eventPublishingService.publish(any(Event.class))).thenReturn(messageId);
 
+        // The local token supplies the write scope needed to publish a valid Event.
         mockMvc.perform(post("/api/v1/events")
                         .header(HttpHeaders.AUTHORIZATION, "Bearer local-dev-token")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -91,6 +94,7 @@ class LocalJwtSecurityTest {
 
     @Test
     void mockDecoderIsNotRegisteredByDefault() {
+        // Without an explicit local profile, application startup must not install the mock decoder.
         new ApplicationContextRunner()
                 .withUserConfiguration(LocalJwtConfiguration.class)
                 .run(context -> assertThat(context).doesNotHaveBean(JwtDecoder.class));
@@ -98,6 +102,7 @@ class LocalJwtSecurityTest {
 
     @Test
     void mockDecoderIsNotRegisteredForTheProductionProfile() {
+        // Activating production must keep the development authentication shortcut disabled.
         new ApplicationContextRunner()
                 .withPropertyValues("spring.profiles.active=production")
                 .withUserConfiguration(LocalJwtConfiguration.class)

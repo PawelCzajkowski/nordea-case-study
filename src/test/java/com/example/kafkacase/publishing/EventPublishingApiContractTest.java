@@ -39,6 +39,7 @@ class EventPublishingApiContractTest {
     void clientCanPublishAValidEventWithTheWriteScope() throws Exception {
         when(eventPublishingService.publish(any(Event.class))).thenReturn(MESSAGE_ID);
 
+        // A valid Event and the write scope produce an acceptance response containing the client UUID.
         mockMvc.perform(post("/api/v1/events")
                         .with(SecurityMockMvcRequestPostProcessors.jwt().authorities(() -> "SCOPE_messages.write"))
                         .contentType(MediaType.APPLICATION_JSON)
@@ -65,6 +66,7 @@ class EventPublishingApiContractTest {
 
     @Test
     void publishingRequiresTheWriteScope() throws Exception {
+        // Authentication with the read scope does not authorize publishing.
         mockMvc.perform(post("/api/v1/events")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .authorities(() -> "SCOPE_messages.read"))
@@ -75,6 +77,7 @@ class EventPublishingApiContractTest {
 
     @Test
     void invalidEventIsRejectedBeforePublishing() throws Exception {
+        // Keep authorization valid so the response specifically exercises Event validation.
         mockMvc.perform(post("/api/v1/events")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .authorities(() -> "SCOPE_messages.write"))
@@ -88,6 +91,7 @@ class EventPublishingApiContractTest {
         when(eventPublishingService.publish(any(Event.class)))
                 .thenThrow(new EventPublicationException("broker unavailable", new IllegalStateException()));
 
+        // A publication failure must reach the client as HTTP 503 instead of HTTP 202.
         mockMvc.perform(post("/api/v1/events")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .authorities(() -> "SCOPE_messages.write"))
@@ -101,6 +105,7 @@ class EventPublishingApiContractTest {
         when(eventPublishingService.publish(any(Event.class)))
                 .thenThrow(new MessageContentConflictException(MESSAGE_ID));
 
+        // Expose messageId conflicts through the public API contract.
         mockMvc.perform(post("/api/v1/events")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .authorities(() -> "SCOPE_messages.write"))

@@ -25,7 +25,10 @@ public class KafkaDeadLetterPublisher implements DeadLetterPublisher {
     @Override
     public void publish(DeadLetterMessage message) {
         try {
+            // Malformed values have no Event UUID, so retain the original Kafka key.
             String key = message.event() == null ? message.rawRecord().key() : message.event().messageId().toString();
+
+            // The consumer may acknowledge this outcome only after the broker confirms publication.
             kafkaTemplate.send(deadLetterProperties.topic(), key, message)
                     .get(publishingProperties.ackTimeout().toMillis(), TimeUnit.MILLISECONDS);
         } catch (InterruptedException interrupted) {

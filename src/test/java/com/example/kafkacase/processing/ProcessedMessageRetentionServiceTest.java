@@ -15,8 +15,10 @@ class ProcessedMessageRetentionServiceTest {
 
     @Test
     void removesProcessedMessagesOlderThanTheConfiguredRetentionPeriod() {
+        // Fix time so the expected retention cutoff is deterministic.
         ProcessedMessageStore store = mock(ProcessedMessageStore.class);
         EventIdentityStore identityStore = mock(EventIdentityStore.class);
+
         ProcessedMessageRetentionService service = new ProcessedMessageRetentionService(
                 store,
                 identityStore,
@@ -25,6 +27,7 @@ class ProcessedMessageRetentionServiceTest {
 
         service.deleteExpiredMessages();
 
+        // Apply the same cutoff to Processed messages and their identity records.
         verify(store).deleteReceivedBefore(Instant.parse("2026-09-24T10:15:30Z"));
         verify(identityStore).deleteRegisteredBefore(Instant.parse("2026-09-24T10:15:30Z"));
     }

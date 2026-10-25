@@ -29,6 +29,8 @@ public class ProcessedMessageRetentionService {
     @Transactional
     public void deleteExpiredMessages() {
         var cutoff = clock.instant().minus(properties.retentionPeriod());
+
+        // Bound storage and the identity ledger using the same retention window and transaction.
         store.deleteReceivedBefore(cutoff);
         identityStore.deleteRegisteredBefore(cutoff);
     }

@@ -25,6 +25,7 @@ class ProcessedMessageServiceTest {
 
     private final ProcessedMessageStore store = mock(ProcessedMessageStore.class);
     private final EventIdentityService eventIdentityService = mock(EventIdentityService.class);
+
     private final ProcessedMessageService service = new ProcessedMessageService(
             store, Clock.fixed(RECEIVED_AT, ZoneOffset.UTC), eventIdentityService);
 
@@ -32,6 +33,8 @@ class ProcessedMessageServiceTest {
     void processingAnEventMakesItAvailableAsAProcessedMessage() {
         Event event = event("customer-42");
         ProcessedMessage processed = new ProcessedMessage(event, RECEIVED_AT);
+
+        // Simulate a successful insert followed by reading the durable result.
         when(store.insertIfAbsent(eq(event), eq(RECEIVED_AT))).thenReturn(true);
         when(store.findByMessageId(MESSAGE_ID)).thenReturn(Optional.of(processed));
 
@@ -42,6 +45,8 @@ class ProcessedMessageServiceTest {
     void replayingIdenticalEventReturnsTheExistingProcessedMessage() {
         Event event = event("customer-42");
         ProcessedMessage existing = new ProcessedMessage(event, Instant.parse("2026-10-20T08:00:00Z"));
+
+        // A replay keeps the original Processed message and its receipt timestamp.
         when(store.insertIfAbsent(eq(event), eq(RECEIVED_AT))).thenReturn(false);
         when(store.findByMessageId(MESSAGE_ID)).thenReturn(Optional.of(existing));
 
@@ -56,11 +61,14 @@ class ProcessedMessageServiceTest {
     })
     void processingAndRepublishingAcceptTheSameEventAfterDatabaseTimestampRounding(
             Instant originalTime, Instant storedTime) {
+        // Cover rounding up, rounding down, and carrying into the next second.
         Event original = new Event(MESSAGE_ID, "customer.updated", "1.0", originalTime, event("customer-42").payload());
         Event stored = new Event(MESSAGE_ID, original.type(), original.schemaVersion(), storedTime, original.payload());
         ProcessedMessage processed = new ProcessedMessage(stored, RECEIVED_AT);
+
         when(store.findByMessageId(MESSAGE_ID)).thenReturn(Optional.of(processed));
 
+        // Both Kafka replay and a client retry must accept the original timestamp.
         assertEquals(processed, service.process(original));
         assertFalse(service.registerForPublication(original));
     }
@@ -68,6 +76,8 @@ class ProcessedMessageServiceTest {
     @Test
     void reusingMessageIdForDifferentEventContentIsAConflict() {
         Event existingEvent = event("customer-42");
+
+        // The stored row belongs to different content even though the UUID matches.
         when(store.insertIfAbsent(eq(event("customer-99")), eq(RECEIVED_AT))).thenReturn(false);
         when(store.findByMessageId(MESSAGE_ID)).thenReturn(
                 Optional.of(new ProcessedMessage(existingEvent, RECEIVED_AT)));

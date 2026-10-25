@@ -30,18 +30,25 @@ class EventPublishingServiceTest {
         KafkaTemplate<String, Event> kafkaTemplate = mock(KafkaTemplate.class);
         Event event = new Event(MESSAGE_ID, "customer.updated", "1.0", Instant.parse("2026-10-24T10:15:30Z"),
                 JsonNodeFactory.instance.objectNode().put("customerId", "c-123"));
+
+        // Keep broker confirmation pending while the publication runs on another thread.
         CompletableFuture<SendResult<String, Event>> acknowledgement = new CompletableFuture<>();
         when(kafkaTemplate.send("configured-events", MESSAGE_ID.toString(), event)).thenReturn(acknowledgement);
+
         ProcessedMessageService processedMessageService = mock(ProcessedMessageService.class);
         when(processedMessageService.registerForPublication(event)).thenReturn(true);
+
         EventPublishingService service = new EventPublishingService(kafkaTemplate,
                 new KafkaPublishingProperties("configured-events", Duration.ofSeconds(2)),
                 processedMessageService);
 
         CompletableFuture<UUID> publication = CompletableFuture.supplyAsync(() -> service.publish(event));
 
+        // Sending the record alone must not complete the client's publication.
         verify(kafkaTemplate, timeout(1_000)).send("configured-events", MESSAGE_ID.toString(), event);
         assertFalse(publication.isDone());
+
+        // Broker confirmation allows the publisher to return the original UUID.
         acknowledgement.complete(null);
 
         assertEquals(MESSAGE_ID, publication.get(1, TimeUnit.SECONDS));
@@ -53,18 +60,24 @@ class EventPublishingServiceTest {
         KafkaTemplate<String, Event> kafkaTemplate = mock(KafkaTemplate.class);
         Event event = new Event(MESSAGE_ID, "customer.updated", "1.0", Instant.parse("2026-10-24T10:15:30Z"),
                 JsonNodeFactory.instance.objectNode().put("customerId", "c-123"));
+
         ProcessedMessageService processedMessageService = mock(ProcessedMessageService.class);
         when(processedMessageService.registerForPublication(event)).thenReturn(true);
+
         EventPublishingService service = new EventPublishingService(kafkaTemplate,
                 new KafkaPublishingProperties("configured-events", Duration.ofMillis(20)),
                 processedMessageService);
 
+        // An explicit broker failure must not be reported as an accepted Event.
         when(kafkaTemplate.send("configured-events", MESSAGE_ID.toString(), event))
                 .thenReturn(CompletableFuture.failedFuture(new IllegalStateException("broker unavailable")));
+
         assertThrows(EventPublicationException.class, () -> service.publish(event));
 
+        // A send that never receives confirmation must fail when the acknowledgement timeout expires.
         when(kafkaTemplate.send("configured-events", MESSAGE_ID.toString(), event))
                 .thenReturn(new CompletableFuture<>());
+
         assertThrows(EventPublicationException.class, () -> service.publish(event));
     }
 }

@@ -33,8 +33,10 @@ class EventBatchConsumerTest {
 
     private final ProcessedMessageService service = mock(ProcessedMessageService.class);
     private final DeadLetterPublisher deadLetterPublisher = mock(DeadLetterPublisher.class);
+
     private final ProcessingRetryProperties retryProperties = new ProcessingRetryProperties(3, Duration.ZERO);
     private final Clock clock = Clock.fixed(Instant.parse("2026-10-23T12:30:00Z"), ZoneOffset.UTC);
+
     private final EventBatchConsumer consumer = new EventBatchConsumer(service, deadLetterPublisher, retryProperties, clock);
 
     @Test
@@ -42,11 +44,14 @@ class EventBatchConsumerTest {
         Event first = event("b395464a-605a-4cb7-928c-c9b5e0ddb9c0");
         Event second = event("6d98bf37-e429-459b-8de0-2a96863076df");
         Acknowledgment acknowledgment = mock(Acknowledgment.class);
+
+        // Only the first Event fails, and only on its first processing attempt.
         when(service.process(first)).thenThrow(new IllegalStateException("temporary database issue"))
                 .thenReturn(null);
 
         consumer.processBatch(List.of(record(first, 0), record(second, 1)), acknowledgment);
 
+        // Retry the failed Event before processing its sibling and acknowledging the batch.
         var order = inOrder(service, acknowledgment);
         order.verify(service, org.mockito.Mockito.times(2)).process(first);
         order.verify(service).process(second);
@@ -58,10 +63,13 @@ class EventBatchConsumerTest {
         Event failed = event("b395464a-605a-4cb7-928c-c9b5e0ddb9c0");
         Event successful = event("6d98bf37-e429-459b-8de0-2a96863076df");
         Acknowledgment acknowledgment = mock(Acknowledgment.class);
+
+        // Exhaust every processing attempt for the first Event.
         when(service.process(failed)).thenThrow(new IllegalStateException("database unavailable"));
 
         consumer.processBatch(List.of(record(failed, 7), record(successful, 8)), acknowledgment);
 
+        // DLQ publication must complete before the batch can be acknowledged.
         var messageCaptor = org.mockito.ArgumentCaptor.forClass(DeadLetterMessage.class);
         var order = inOrder(service, deadLetterPublisher, acknowledgment);
         order.verify(service, org.mockito.Mockito.times(3)).process(failed);
@@ -69,11 +77,14 @@ class EventBatchConsumerTest {
         order.verify(service).process(successful);
         order.verify(acknowledgment).acknowledge();
 
+        // Retain the original Event together with the exhausted retry outcome.
         DeadLetterMessage message = messageCaptor.getValue();
         assertEquals(failed, message.event());
         assertEquals(3, message.failure().attempts());
         assertEquals(IllegalStateException.class.getName(), message.failure().exceptionType());
         assertEquals("database unavailable", message.failure().reason());
+
+        // Source coordinates identify the exact Kafka record that failed.
         assertEquals("events", message.failure().sourceTopic());
         assertEquals(0, message.failure().sourcePartition());
         assertEquals(7L, message.failure().sourceOffset());
@@ -85,13 +96,17 @@ class EventBatchConsumerTest {
         Event failed = event("b395464a-605a-4cb7-928c-c9b5e0ddb9c0");
         Event successful = event("6d98bf37-e429-459b-8de0-2a96863076df");
         Acknowledgment acknowledgment = mock(Acknowledgment.class);
+
+        // Both processing and the fallback DLQ publication fail for the first Event.
         when(service.process(failed)).thenThrow(new IllegalStateException("database unavailable"));
+
         org.mockito.Mockito.doThrow(new IllegalStateException("Kafka DLQ unavailable"))
                 .when(deadLetterPublisher).publish(org.mockito.ArgumentMatchers.any());
 
         IllegalStateException failure = assertThrows(IllegalStateException.class,
                 () -> consumer.processBatch(List.of(record(failed, 7), record(successful, 8)), acknowledgment));
 
+        // Preserve sibling progress while leaving the batch available for replay.
         assertEquals("Kafka DLQ unavailable", failure.getMessage());
         verify(service).process(successful);
         verify(acknowledgment, never()).acknowledge();
@@ -105,24 +120,32 @@ class EventBatchConsumerTest {
         ConsumerRecord<String, Event> malformed = malformedRecord(rawValue);
         Event successful = event("6d98bf37-e429-459b-8de0-2a96863076df");
         Acknowledgment acknowledgment = mock(Acknowledgment.class);
+
+        // Fail explicitly if the consumer tries to process the deserializer's null Event.
         when(service.process(null)).thenThrow(new NullPointerException("Event must not be null"));
 
         consumer.processBatch(List.of(malformed, record(successful, 8)), acknowledgment);
 
+        // Route the malformed value to the DLQ and still process the valid Event.
         var messageCaptor = org.mockito.ArgumentCaptor.forClass(DeadLetterMessage.class);
         var order = inOrder(deadLetterPublisher, service, acknowledgment);
         order.verify(deadLetterPublisher).publish(messageCaptor.capture());
         order.verify(service).process(successful);
         order.verify(acknowledgment).acknowledge();
         verify(service, never()).process(null);
+
+        // Deserialization is a permanent failure and needs only one attempt.
         DeadLetterMessage message = messageCaptor.getValue();
         assertNull(message.event());
         assertEquals(1, message.failure().attempts());
         assertEquals("org.springframework.kafka.support.serializer.DeserializationException",
                 message.failure().exceptionType());
+
         assertEquals("events", message.failure().sourceTopic());
         assertEquals(0, message.failure().sourcePartition());
         assertEquals(7L, message.failure().sourceOffset());
+
+        // Check the serialized DLQ payload to ensure the original key and bytes survive publication.
         var serialized = JSON.copy().findAndRegisterModules().valueToTree(message);
         assertEquals("malformed-key", serialized.at("/rawRecord/key").asText());
         assertArrayEquals(rawValue, serialized.at("/rawRecord/value").binaryValue());
@@ -133,7 +156,10 @@ class EventBatchConsumerTest {
         var malformed = malformedRecord("{invalid JSON".getBytes(StandardCharsets.UTF_8));
         Event successful = event("6d98bf37-e429-459b-8de0-2a96863076df");
         Acknowledgment acknowledgment = mock(Acknowledgment.class);
+
         when(service.process(null)).thenThrow(new NullPointerException("Event must not be null"));
+
+        // Model an unconfirmed DLQ send after the malformed value has been identified.
         var publicationFailure = new DeadLetterPublicationException("Kafka DLQ unavailable", new IllegalStateException());
         org.mockito.Mockito.doThrow(publicationFailure).when(deadLetterPublisher)
                 .publish(org.mockito.ArgumentMatchers.any());
@@ -141,6 +167,7 @@ class EventBatchConsumerTest {
         assertEquals(publicationFailure, assertThrows(DeadLetterPublicationException.class,
                 () -> consumer.processBatch(List.of(malformed, record(successful, 8)), acknowledgment)));
 
+        // Report the publication failure only after the valid sibling has been processed.
         verify(service).process(successful);
         verify(service, never()).process(null);
         verify(acknowledgment, never()).acknowledge();
@@ -148,16 +175,20 @@ class EventBatchConsumerTest {
 
     @Test
     void tombstoneIsDeadLetteredAndDoesNotPreventProcessingTheNextEvent() {
+        // Kafka tombstones contain a null value without a deserialization exception header.
         var tombstone = new ConsumerRecord<String, Event>("events", 0, 7L, "deleted-key", null);
         Event successful = event("6d98bf37-e429-459b-8de0-2a96863076df");
         Acknowledgment acknowledgment = mock(Acknowledgment.class);
 
         consumer.processBatch(List.of(tombstone, record(successful, 8)), acknowledgment);
 
+        // Preserve the tombstone key and null value in its Dead-letter message.
         var messageCaptor = org.mockito.ArgumentCaptor.forClass(DeadLetterMessage.class);
         verify(deadLetterPublisher).publish(messageCaptor.capture());
+
         assertEquals("deleted-key", messageCaptor.getValue().rawRecord().key());
         assertNull(messageCaptor.getValue().rawRecord().value());
+
         verify(service).process(successful);
         verify(service, never()).process(null);
         verify(acknowledgment).acknowledge();
@@ -165,10 +196,14 @@ class EventBatchConsumerTest {
 
     private ConsumerRecord<String, Event> malformedRecord(byte[] rawValue) {
         var headers = new org.apache.kafka.common.header.internals.RecordHeaders();
+
+        // Use the real deserializer so the fixture contains the same trusted header as a Kafka failure.
         try (var deserializer = new ErrorHandlingDeserializer<>(new JsonDeserializer<>(Event.class, JSON))) {
             Event value = deserializer.deserialize("events", headers, rawValue);
+
             var record = new ConsumerRecord<>("events", 0, 7L, "malformed-key", value);
             headers.forEach(record.headers()::add);
+
             return record;
         }
     }

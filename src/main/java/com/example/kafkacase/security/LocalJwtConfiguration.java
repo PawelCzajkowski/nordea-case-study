@@ -19,7 +19,9 @@ public class LocalJwtConfiguration {
                 throw new BadJwtException("Invalid local development token");
             }
 
+            // Provide the claims normally obtained from a verified JWT for local manual testing.
             Instant now = Instant.now();
+
             return Jwt.withTokenValue(token)
                     .header("alg", "none")
                     .subject("local-developer")

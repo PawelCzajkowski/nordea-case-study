@@ -41,9 +41,12 @@ class KafkaListenerErrorConfigurationTest {
     @ParameterizedTest
     @ValueSource(booleans = {false, true})
     void retriesBatchUntilDeadLetterPublicationIsConfirmedBeforeAcknowledging(boolean brokerRejectsPublication) {
+        // Use the configured handler with immediate retries to keep both failure scenarios fast.
         var configuration = new KafkaListenerErrorConfiguration();
         var properties = new ProcessingRetryProperties(1, Duration.ZERO);
         var errorHandler = configuration.kafkaListenerErrorHandler(configuration.kafkaListenerErrorBackOff(properties));
+
+        // Keep one Event and its Kafka coordinates stable throughout all batch replays.
         var clock = Clock.fixed(Instant.parse("2026-10-23T12:30:00Z"), ZoneOffset.UTC);
         var event = new Event(UUID.fromString("b395464a-605a-4cb7-928c-c9b5e0ddb9c0"),
                 "customer.updated", "1.0", Instant.parse("2026-10-23T12:00:00Z"),
@@ -51,14 +54,19 @@ class KafkaListenerErrorConfigurationTest {
         var record = new ConsumerRecord<>("events", 0, 7L, event.messageId().toString(), event);
         var partition = new TopicPartition(record.topic(), record.partition());
         var records = new ConsumerRecords<>(Map.of(partition, List.of(record)));
+
+        // Exercise the real consumer and publisher while controlling persistence and broker confirmation.
         var acknowledgment = mock(Acknowledgment.class);
         var service = mock(ProcessedMessageService.class);
         KafkaTemplate<String, DeadLetterMessage> kafkaTemplate = mock(KafkaTemplate.class);
         var publisher = new KafkaDeadLetterPublisher(kafkaTemplate, new DeadLetterProperties("events.dlq"),
                 new KafkaPublishingProperties("events", Duration.ofMillis(1)));
         var listener = new EventBatchConsumer(service, publisher, properties, clock);
+
+        // Let Spring's error handler pause and retry a running consumer assigned to this partition.
         Consumer<String, Event> kafkaConsumer = mock(Consumer.class);
         var container = mock(MessageListenerContainer.class);
+
         when(kafkaConsumer.assignment()).thenReturn(Set.of(partition));
         when(container.isRunning()).thenReturn(true);
         when(service.process(event)).thenThrow(new IllegalStateException("database unavailable"));
@@ -66,28 +74,36 @@ class KafkaListenerErrorConfigurationTest {
         // Exceed Spring's default finite recovery limit before allowing the DLQ send to succeed.
         int unconfirmedPublications = 15;
         var publicationAttempts = new AtomicInteger();
+
         when(kafkaTemplate.send(eq("events.dlq"), eq(event.messageId().toString()), any(DeadLetterMessage.class)))
                 .thenAnswer(invocation -> {
                     verify(acknowledgment, never()).acknowledge();
+
+                    // Cover an explicit broker rejection and a send that times out without confirmation.
                     if (publicationAttempts.incrementAndGet() <= unconfirmedPublications) {
                         return brokerRejectsPublication
                                 ? CompletableFuture.<SendResult<String, DeadLetterMessage>>failedFuture(
                                         new IllegalStateException("broker rejected the record"))
                                 : new CompletableFuture<SendResult<String, DeadLetterMessage>>();
                     }
+
                     return CompletableFuture.<SendResult<String, DeadLetterMessage>>completedFuture(null);
                 });
 
+        // Capture the initial listener failure before handing batch replay to Spring.
         Runnable invokeListener = () -> listener.processBatch(List.of(record), acknowledgment);
         var initialFailure = assertThrows(DeadLetterPublicationException.class, invokeListener::run);
 
         errorHandler.handleBatch(initialFailure, records, kafkaConsumer, container, invokeListener);
 
+        // The eventual confirmed send must precede the only batch acknowledgement.
         var messages = ArgumentCaptor.forClass(DeadLetterMessage.class);
         var order = inOrder(kafkaTemplate, acknowledgment);
         order.verify(kafkaTemplate, times(unconfirmedPublications + 1))
                 .send(eq("events.dlq"), eq(event.messageId().toString()), messages.capture());
         order.verify(acknowledgment).acknowledge();
+
+        // Every retry must preserve the original Event and source position.
         for (DeadLetterMessage message : messages.getAllValues()) {
             assertEquals(event, message.event());
             assertEquals(record.topic(), message.failure().sourceTopic());

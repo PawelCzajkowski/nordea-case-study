@@ -23,6 +23,7 @@ import static org.mockito.Mockito.when;
 
 class KafkaDeadLetterPublisherTest {
     private final KafkaTemplate<String, DeadLetterMessage> kafkaTemplate = mock(KafkaTemplate.class);
+
     private final KafkaDeadLetterPublisher publisher = new KafkaDeadLetterPublisher(
             kafkaTemplate,
             new DeadLetterProperties("case-events.dead-letter"),
@@ -30,8 +31,10 @@ class KafkaDeadLetterPublisherTest {
 
     @Test
     void publishesTheDeadLetterToTheConfiguredTopicAndWaitsForKafkaConfirmation() {
+        // Model a send whose broker confirmation is already available.
         DeadLetterMessage message = message();
         CompletableFuture<SendResult<String, DeadLetterMessage>> confirmation = CompletableFuture.completedFuture(null);
+
         when(kafkaTemplate.send(eq("case-events.dead-letter"), eq(message.event().messageId().toString()), eq(message)))
                 .thenReturn(confirmation);
 
@@ -42,9 +45,12 @@ class KafkaDeadLetterPublisherTest {
 
     @Test
     void failsPublicationWhenKafkaDoesNotConfirmTheDeadLetter() {
+        // An exceptional confirmation must be surfaced to the consumer as a publication failure.
         DeadLetterMessage message = message();
         CompletableFuture<SendResult<String, DeadLetterMessage>> confirmation = new CompletableFuture<>();
+
         confirmation.completeExceptionally(new IllegalStateException("broker rejected the record"));
+
         when(kafkaTemplate.send(eq("case-events.dead-letter"), eq(message.event().messageId().toString()), eq(message)))
                 .thenReturn(confirmation);
 
@@ -55,8 +61,10 @@ class KafkaDeadLetterPublisherTest {
     @NullAndEmptySource
     @ValueSource(strings = "malformed-key")
     void publishesMalformedRecordWithoutAnEventUsingItsOriginalKey(String key) {
+        // Malformed Kafka values have raw bytes and a possibly null key, but no deserialized Event.
         var message = new DeadLetterMessage(null, message().failure(),
                 new DeadLetterMessage.RawRecord(key, new byte[]{'{', (byte) 0xff}));
+
         when(kafkaTemplate.send("case-events.dead-letter", key, message))
                 .thenReturn(CompletableFuture.completedFuture(null));
 
@@ -69,6 +77,7 @@ class KafkaDeadLetterPublisherTest {
         Event event = new Event(UUID.fromString("b395464a-605a-4cb7-928c-c9b5e0ddb9c0"),
                 "customer.updated", "1.0", Instant.parse("2026-10-23T12:00:00Z"),
                 new ObjectMapper().createObjectNode().put("customerId", "c-123"));
+
         return new DeadLetterMessage(event, new DeadLetterMessage.FailureMetadata(
                 3, IllegalStateException.class.getName(), "database unavailable",
                 Instant.parse("2026-10-23T12:30:00Z"), "case-events", 0, 7));

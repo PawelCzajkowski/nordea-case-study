@@ -42,6 +42,8 @@ class ProcessedMessageApiContractTest {
     void clientWithReadScopeCanRetrievePagedProcessedMessages() throws Exception {
         Event event = new Event(MESSAGE_ID, "customer.updated", "1.0",
                 Instant.parse("2026-10-23T12:00:00Z"), JSON.createObjectNode().put("customerId", "c-123"));
+
+        // Return one page from a larger read model to verify content and pagination metadata together.
         when(processedMessageService.findPage(1, 2)).thenReturn(
                 new ProcessedMessagePage(List.of(new ProcessedMessage(event, Instant.parse("2026-10-24T12:00:00Z"))), 5));
 
@@ -66,6 +68,7 @@ class ProcessedMessageApiContractTest {
 
     @Test
     void readApiRequiresTheReadScope() throws Exception {
+        // A write-scoped caller is authenticated but cannot retrieve Processed messages.
         mockMvc.perform(get("/api/v1/messages")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .authorities(() -> "SCOPE_messages.write")))
@@ -74,6 +77,7 @@ class ProcessedMessageApiContractTest {
 
     @Test
     void invalidPageSizeIsRejected() throws Exception {
+        // Exercise the page-size limit using a caller who is otherwise authorized to read.
         mockMvc.perform(get("/api/v1/messages?size=101")
                         .with(SecurityMockMvcRequestPostProcessors.jwt()
                                 .authorities(() -> "SCOPE_messages.read"))

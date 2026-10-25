@@ -29,11 +29,13 @@ public class JdbcProcessedMessageStore implements ProcessedMessageStore {
 
     @Override
     public boolean insertIfAbsent(Event event, Instant receivedAt) {
+        // Replayed Events keep the original row instead of creating or overwriting a Processed message.
         String sql = """
                 INSERT INTO processed_messages (message_id, event_type, schema_version, occurred_at, payload, received_at)
                 VALUES (?, ?, ?, ?, CAST(? AS jsonb), ?)
                 ON CONFLICT (message_id) DO NOTHING
                 """;
+
         return jdbcTemplate.update(sql,
                 event.messageId(),
                 event.type(),
@@ -49,12 +51,15 @@ public class JdbcProcessedMessageStore implements ProcessedMessageStore {
                 "SELECT * FROM processed_messages WHERE message_id = ?",
                 rowMapper,
                 messageId);
+
         return messages.stream().findFirst();
     }
 
     @Override
     public ProcessedMessagePage findPage(int page, int size) {
         long offset = Math.multiplyExact((long) page, size);
+
+        // The UUID tie-breaker makes pagination stable when receipt timestamps are equal.
         List<ProcessedMessage> content = jdbcTemplate.query("""
                         SELECT * FROM processed_messages
                         ORDER BY received_at DESC, message_id DESC
@@ -63,7 +68,10 @@ public class JdbcProcessedMessageStore implements ProcessedMessageStore {
                 rowMapper,
                 size,
                 offset);
+
+        // Count the full read model so the API can report the total number of pages.
         Long totalElements = jdbcTemplate.queryForObject("SELECT COUNT(*) FROM processed_messages", Long.class);
+
         return new ProcessedMessagePage(content, totalElements == null ? 0 : totalElements);
     }
 
@@ -83,6 +91,7 @@ public class JdbcProcessedMessageStore implements ProcessedMessageStore {
                     result.getTimestamp("occurred_at").toInstant(),
                     objectMapper.readTree(result.getString("payload"))
             );
+
             return new ProcessedMessage(event, result.getTimestamp("received_at").toInstant());
         } catch (JsonProcessingException exception) {
             throw new SQLException("Stored Event payload is not valid JSON", exception);

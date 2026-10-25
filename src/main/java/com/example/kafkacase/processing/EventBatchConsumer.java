@@ -37,11 +37,15 @@ public class EventBatchConsumer {
     @KafkaListener(topics = "${app.kafka.topic}", groupId = "${spring.kafka.consumer.group-id}")
     public void processBatch(List<ConsumerRecord<String, Event>> records, Acknowledgment acknowledgment) {
         RuntimeException batchFailure = null;
+
         for (ConsumerRecord<String, Event> record : records) {
+            // Deserialization failures retain the original bytes in a trusted Kafka header.
             DeserializationException deserializationFailure = SerializationUtils.getExceptionFromHeader(record,
                     SerializationUtils.VALUE_DESERIALIZER_EXCEPTION_HEADER, DESERIALIZATION_LOGGER);
             RuntimeException processingFailure;
             int attempts;
+
+            // Invalid values go directly to the DLQ; only valid Events receive processing retries.
             if (deserializationFailure != null) {
                 processingFailure = deserializationFailure;
                 attempts = 1;
@@ -52,6 +56,7 @@ public class EventBatchConsumer {
                 processingFailure = processWithRetries(record.value());
                 attempts = retryProperties.maxAttempts();
             }
+
             if (processingFailure == null) {
                 continue;
             }
@@ -59,12 +64,16 @@ public class EventBatchConsumer {
             LOGGER.warn("Record {}-{}@{} failed after {} attempts ({}): {}",
                     record.topic(), record.partition(), record.offset(), attempts,
                     processingFailure.getClass().getSimpleName(), failureReason(processingFailure));
+
             DeadLetterMessage message = deadLetterMessage(record, processingFailure, attempts, deserializationFailure);
+
             try {
                 deadLetterPublisher.publish(message);
             } catch (RuntimeException publicationFailure) {
+                // Collect publication failures so the remaining Events can still reach their own outcomes.
                 LOGGER.error("Could not publish record {}-{}@{} to the dead-letter topic; batch will be replayed",
                         record.topic(), record.partition(), record.offset(), publicationFailure);
+
                 if (batchFailure == null) {
                     batchFailure = publicationFailure;
                 } else if (batchFailure != publicationFailure) {
@@ -72,9 +81,13 @@ public class EventBatchConsumer {
                 }
             }
         }
+
+        // Replay the batch if any DLQ publication remains unconfirmed.
         if (batchFailure != null) {
             throw batchFailure;
         }
+
+        // Acknowledge only when every Event was persisted or its DLQ publication was confirmed.
         acknowledgment.acknowledge();
     }
 
@@ -87,6 +100,7 @@ public class EventBatchConsumer {
                 if (attempt >= retryProperties.maxAttempts()) {
                     return failure;
                 }
+
                 pauseBeforeRetry();
             }
         }
@@ -94,10 +108,12 @@ public class EventBatchConsumer {
 
     private DeadLetterMessage deadLetterMessage(ConsumerRecord<String, Event> record, RuntimeException failure,
                                                 int attempts, DeserializationException deserializationFailure) {
+        // A tombstone has no bytes; a deserialization failure preserves its original Kafka value.
         DeadLetterMessage.RawRecord rawRecord = record.value() == null
                 ? new DeadLetterMessage.RawRecord(record.key(),
                         deserializationFailure == null ? null : deserializationFailure.getData())
                 : null;
+
         return new DeadLetterMessage(record.value(), new DeadLetterMessage.FailureMetadata(
                 attempts,
                 failure.getClass().getName(),
@@ -117,6 +133,7 @@ public class EventBatchConsumer {
         if (backoff.isZero()) {
             return;
         }
+
         try {
             Thread.sleep(backoff.toMillis(), backoff.toNanosPart() % 1_000_000);
         } catch (InterruptedException interrupted) {

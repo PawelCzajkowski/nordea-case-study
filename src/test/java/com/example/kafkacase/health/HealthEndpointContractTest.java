@@ -44,6 +44,7 @@ class HealthEndpointContractTest {
     }
 
     private void assertHealthy(String path) throws Exception {
+        // Cluster probes must report health without an Authorization header.
         mockMvc.perform(get(path))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"));

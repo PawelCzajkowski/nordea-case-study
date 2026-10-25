@@ -25,13 +25,16 @@ public class EventPublishingService {
     }
 
     public UUID publish(Event event) {
+        // An identical Event already persisted can satisfy a client retry immediately.
         if (!processedMessageService.registerForPublication(event)) {
             return event.messageId();
         }
 
         try {
+            // Report acceptance only after Kafka confirms the send within the configured timeout.
             kafkaTemplate.send(properties.topic(), event.messageId().toString(), event)
                     .get(properties.ackTimeout().toMillis(), TimeUnit.MILLISECONDS);
+
             return event.messageId();
         } catch (InterruptedException exception) {
             Thread.currentThread().interrupt();
