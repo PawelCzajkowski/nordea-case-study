@@ -16,10 +16,10 @@ import java.util.TreeMap;
 
 @Service
 class EventIdentityService {
-    private final EventIdentityStore store;
+    private final JdbcEventIdentityStore store;
     private final ObjectMapper objectMapper;
 
-    public EventIdentityService(EventIdentityStore store, ObjectMapper objectMapper) {
+    public EventIdentityService(JdbcEventIdentityStore store, ObjectMapper objectMapper) {
         this.store = store;
         this.objectMapper = objectMapper;
     }

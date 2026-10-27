@@ -16,7 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-class JdbcProcessedMessageStore implements ProcessedMessageStore {
+class JdbcProcessedMessageStore {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final RowMapper<ProcessedMessage> rowMapper;
@@ -27,7 +27,6 @@ class JdbcProcessedMessageStore implements ProcessedMessageStore {
         this.rowMapper = this::mapRow;
     }
 
-    @Override
     public boolean insertIfAbsent(Event event, Instant receivedAt) {
         // Replayed Events keep the original row instead of creating or overwriting a Processed message.
         String sql = """
@@ -45,7 +44,6 @@ class JdbcProcessedMessageStore implements ProcessedMessageStore {
                 Timestamp.from(receivedAt)) == 1;
     }
 
-    @Override
     public Optional<ProcessedMessage> findByMessageId(UUID messageId) {
         List<ProcessedMessage> messages = jdbcTemplate.query(
                 "SELECT * FROM processed_messages WHERE message_id = ?",
@@ -55,7 +53,6 @@ class JdbcProcessedMessageStore implements ProcessedMessageStore {
         return messages.stream().findFirst();
     }
 
-    @Override
     public ProcessedMessagePage findPage(int page, int size) {
         long offset = Math.multiplyExact((long) page, size);
 
@@ -75,7 +72,6 @@ class JdbcProcessedMessageStore implements ProcessedMessageStore {
         return new ProcessedMessagePage(content, totalElements == null ? 0 : totalElements);
     }
 
-    @Override
     public int deleteReceivedBefore(Instant cutoff) {
         return jdbcTemplate.update(
                 "DELETE FROM processed_messages WHERE received_at < ?",
