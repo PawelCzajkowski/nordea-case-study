@@ -1,5 +1,6 @@
 package com.example.kafkacase.processing;
 
+import com.example.kafkacase.processing.persistence.ProcessedMessagePage;
 import java.util.List;
 
 public record ProcessedMessagePageResponse(

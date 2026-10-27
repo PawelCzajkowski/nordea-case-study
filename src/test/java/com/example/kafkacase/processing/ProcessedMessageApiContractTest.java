@@ -1,6 +1,9 @@
 package com.example.kafkacase.processing;
 
 import com.example.kafkacase.event.Event;
+import com.example.kafkacase.processing.persistence.ProcessedMessage;
+import com.example.kafkacase.processing.persistence.ProcessedMessagePage;
+import com.example.kafkacase.processing.persistence.ProcessedMessageService;
 import com.example.kafkacase.security.SecurityConfiguration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.Test;

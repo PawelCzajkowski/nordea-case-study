@@ -1,4 +1,4 @@
-package com.example.kafkacase.processing;
+package com.example.kafkacase.processing.persistence;
 
 import com.example.kafkacase.event.Event;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -16,7 +16,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public class JdbcProcessedMessageStore implements ProcessedMessageStore {
+class JdbcProcessedMessageStore implements ProcessedMessageStore {
     private final JdbcTemplate jdbcTemplate;
     private final ObjectMapper objectMapper;
     private final RowMapper<ProcessedMessage> rowMapper;

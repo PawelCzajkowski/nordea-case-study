@@ -1,6 +1,6 @@
 package com.example.kafkacase.publishing;
 
-import com.example.kafkacase.processing.MessageContentConflictException;
+import com.example.kafkacase.processing.persistence.MessageContentConflictException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.annotation.ExceptionHandler;

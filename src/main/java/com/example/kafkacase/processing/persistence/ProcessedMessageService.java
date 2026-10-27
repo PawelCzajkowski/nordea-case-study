@@ -1,6 +1,7 @@
-package com.example.kafkacase.processing;
+package com.example.kafkacase.processing.persistence;
 
 import com.example.kafkacase.event.Event;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -8,15 +9,19 @@ import java.time.Clock;
 import java.time.temporal.ChronoUnit;
 
 @Service
+@EnableConfigurationProperties(ProcessedMessageRetentionProperties.class)
 public class ProcessedMessageService {
     private final ProcessedMessageStore store;
     private final Clock clock;
     private final EventIdentityService eventIdentityService;
+    private final ProcessedMessageRetentionProperties retentionProperties;
 
-    public ProcessedMessageService(ProcessedMessageStore store, Clock clock, EventIdentityService eventIdentityService) {
+    ProcessedMessageService(ProcessedMessageStore store, Clock clock, EventIdentityService eventIdentityService,
+                            ProcessedMessageRetentionProperties retentionProperties) {
         this.store = store;
         this.clock = clock;
         this.eventIdentityService = eventIdentityService;
+        this.retentionProperties = retentionProperties;
     }
 
     @Transactional
@@ -58,6 +63,15 @@ public class ProcessedMessageService {
         return store.findPage(page, size);
     }
 
+    @Transactional
+    public void deleteExpiredMessages() {
+        var cutoff = clock.instant().minus(retentionProperties.retentionPeriod());
+
+        // Both records expire in one transaction, using their own original timestamps.
+        store.deleteReceivedBefore(cutoff);
+        eventIdentityService.deleteRegisteredBefore(cutoff);
+    }
+
     private boolean matchesStoredEvent(Event stored, Event original) {
         // PostgreSQL/JDBC round timestamps to microseconds; the identity fingerprint retains the original nanoseconds.
         var storedTimestamp = original.occurredAt().plusNanos(500).truncatedTo(ChronoUnit.MICROS);
@@ -65,5 +79,4 @@ public class ProcessedMessageService {
         return stored.equals(new Event(original.messageId(), original.type(), original.schemaVersion(),
                 storedTimestamp, original.payload()));
     }
-
 }

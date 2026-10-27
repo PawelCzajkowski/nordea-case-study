@@ -1,6 +1,7 @@
 package com.example.kafkacase.processing;
 
 import com.example.kafkacase.event.Event;
+import com.example.kafkacase.processing.persistence.ProcessedMessageService;
 import com.example.kafkacase.publishing.KafkaPublishingProperties;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.apache.kafka.clients.consumer.Consumer;

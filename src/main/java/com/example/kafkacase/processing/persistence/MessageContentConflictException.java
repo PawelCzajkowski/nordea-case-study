@@ -1,4 +1,4 @@
-package com.example.kafkacase.processing;
+package com.example.kafkacase.processing.persistence;
 
 import java.util.UUID;
 

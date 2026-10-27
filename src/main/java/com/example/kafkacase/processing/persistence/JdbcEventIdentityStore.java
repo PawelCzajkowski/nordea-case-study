@@ -1,4 +1,4 @@
-package com.example.kafkacase.processing;
+package com.example.kafkacase.processing.persistence;
 
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Repository;
@@ -9,7 +9,7 @@ import java.util.Optional;
 import java.util.UUID;
 
 @Repository
-public class JdbcEventIdentityStore implements EventIdentityStore {
+class JdbcEventIdentityStore implements EventIdentityStore {
     private final JdbcTemplate jdbcTemplate;
 
     public JdbcEventIdentityStore(JdbcTemplate jdbcTemplate) {

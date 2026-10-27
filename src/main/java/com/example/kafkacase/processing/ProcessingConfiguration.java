@@ -10,7 +10,6 @@ import java.time.Clock;
 @Configuration
 @EnableScheduling
 @EnableConfigurationProperties({
-        ProcessedMessageRetentionProperties.class,
         ProcessingRetryProperties.class,
         DeadLetterProperties.class
 })

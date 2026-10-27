@@ -1,5 +1,6 @@
 package com.example.kafkacase.processing;
 
+import com.example.kafkacase.processing.persistence.ProcessedMessage;
 import com.fasterxml.jackson.databind.JsonNode;
 
 import java.time.Instant;

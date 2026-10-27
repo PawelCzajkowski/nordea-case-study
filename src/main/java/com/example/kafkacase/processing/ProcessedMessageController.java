@@ -1,5 +1,6 @@
 package com.example.kafkacase.processing;
 
+import com.example.kafkacase.processing.persistence.ProcessedMessageService;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import org.springframework.validation.annotation.Validated;

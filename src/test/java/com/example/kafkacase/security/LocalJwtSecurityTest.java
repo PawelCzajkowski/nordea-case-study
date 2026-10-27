@@ -2,8 +2,8 @@ package com.example.kafkacase.security;
 
 import com.example.kafkacase.event.Event;
 import com.example.kafkacase.processing.ProcessedMessageController;
-import com.example.kafkacase.processing.ProcessedMessagePage;
-import com.example.kafkacase.processing.ProcessedMessageService;
+import com.example.kafkacase.processing.persistence.ProcessedMessagePage;
+import com.example.kafkacase.processing.persistence.ProcessedMessageService;
 import com.example.kafkacase.publishing.EventPublishingController;
 import com.example.kafkacase.publishing.EventPublishingService;
 import org.junit.jupiter.api.Test;

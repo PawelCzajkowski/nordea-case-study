@@ -1,4 +1,4 @@
-package com.example.kafkacase.processing;
+package com.example.kafkacase.processing.persistence;
 
 import org.springframework.boot.context.properties.ConfigurationProperties;
 
@@ -6,7 +6,7 @@ import java.time.Duration;
 import java.util.Objects;
 
 @ConfigurationProperties(prefix = "app.processing")
-public record ProcessedMessageRetentionProperties(Duration retentionPeriod) {
+record ProcessedMessageRetentionProperties(Duration retentionPeriod) {
     public ProcessedMessageRetentionProperties {
         Objects.requireNonNull(retentionPeriod, "retentionPeriod must be configured");
         if (retentionPeriod.isZero() || retentionPeriod.isNegative()) {

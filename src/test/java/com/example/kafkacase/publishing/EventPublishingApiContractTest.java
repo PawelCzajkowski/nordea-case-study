@@ -1,7 +1,7 @@
 package com.example.kafkacase.publishing;
 
 import com.example.kafkacase.event.Event;
-import com.example.kafkacase.processing.MessageContentConflictException;
+import com.example.kafkacase.processing.persistence.MessageContentConflictException;
 import com.example.kafkacase.security.SecurityConfiguration;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;

@@ -1,6 +1,7 @@
 package com.example.kafkacase.processing;
 
 import com.example.kafkacase.event.Event;
+import com.example.kafkacase.processing.persistence.ProcessedMessageService;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;

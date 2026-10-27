@@ -78,6 +78,10 @@ kubectl apply -f k8s/configmap.yaml
 kubectl rollout restart deployment/message-service
 ```
 
+## Moduł trwałego stanu
+
+Pakiet `processing.persistence` skupia reguły tożsamości Event, idempotentny zapis Processed message, obsługę precyzji PostgreSQL i retencję. Jego wejściem jest [ProcessedMessageService](src/main/java/com/example/kafkacase/processing/persistence/ProcessedMessageService.java): rejestracja do publikacji, przetwarzanie, odczyt strony i usuwanie przeterminowanych danych. Magazyny, fingerprint i konfiguracja retencji są szczegółami pakietu. Harmonogram jedynie wywołuje operację sprzątania; moduł oblicza termin wygaśnięcia i zarządza transakcją obu usunięć.
+
 ## Testy i pokrycie kodu
 
 Uruchom pełny smoke test lokalnego środowiska Compose:
@@ -88,7 +92,15 @@ bash scripts/smoke-test.sh
 
 Skrypt buduje osobne środowisko, sprawdza stan aplikacji i sondy, uwierzytelnianie, publikację, przetwarzanie, idempotencję i konflikty, a następnie usuwa utworzone kontenery i wolumeny. Użyj `--keep`, aby zachować środowisko. [Instrukcja smoke testu](docs/smoke-test.md) opisuje wymagania, opcje, oczekiwane wyniki oraz pełną procedurę ręcznego wykonania wszystkich kroków.
 
-Testy uruchomisz poleceniem `mvn test`. Zestaw obejmuje testy jednostkowe oraz testy integracyjne korzystające z Testcontainers, które wymagają Dockera. Pełna weryfikacja generuje również lokalny raport JaCoCo w formacie HTML:
+Testy uruchomisz poleceniem `mvn test` na Javie 21. Zestaw obejmuje testy jednostkowe oraz testy integracyjne korzystające z Testcontainers, które wymagają Dockera. Reguły trwałego stanu mają osobny test z PostgreSQL, uruchamiany bez Kafka i HTTP:
+
+```bash
+mvn -Dtest=ProcessedMessageServiceIntegrationTest test
+```
+
+Test sprawdza ponowienia, konflikty treści, precyzję nanosekund, kolejność pól JSON, stronicowanie, retencję i rollback. Weryfikuje też osobne momenty rozpoczęcia retencji tożsamości i Processed message. Test pełnego przepływu nadal sprawdza integrację HTTP → Kafka → PostgreSQL → HTTP.
+
+Pełna weryfikacja generuje również lokalny raport JaCoCo w formacie HTML:
 
 ```bash
 mvn verify

@@ -1,4 +1,4 @@
-package com.example.kafkacase.processing;
+package com.example.kafkacase.processing.persistence;
 
 import com.example.kafkacase.event.Event;
 import com.fasterxml.jackson.core.JsonProcessingException;
@@ -7,16 +7,15 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.time.Instant;
 import java.util.Map;
 import java.util.TreeMap;
-import java.util.UUID;
 
 @Service
-public class EventIdentityService {
+class EventIdentityService {
     private final EventIdentityStore store;
     private final ObjectMapper objectMapper;
 
@@ -25,7 +24,6 @@ public class EventIdentityService {
         this.objectMapper = objectMapper;
     }
 
-    @Transactional
     public void register(Event event) {
         byte[] fingerprint = fingerprint(event);
 
@@ -41,6 +39,10 @@ public class EventIdentityService {
         if (!MessageDigest.isEqual(originalFingerprint, fingerprint)) {
             throw new MessageContentConflictException(event.messageId());
         }
+    }
+
+    void deleteRegisteredBefore(Instant cutoff) {
+        store.deleteRegisteredBefore(cutoff);
     }
 
     private byte[] fingerprint(Event event) {

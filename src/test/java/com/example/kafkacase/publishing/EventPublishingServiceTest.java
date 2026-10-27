@@ -1,7 +1,7 @@
 package com.example.kafkacase.publishing;
 
 import com.example.kafkacase.event.Event;
-import com.example.kafkacase.processing.ProcessedMessageService;
+import com.example.kafkacase.processing.persistence.ProcessedMessageService;
 import com.fasterxml.jackson.databind.node.JsonNodeFactory;
 import org.junit.jupiter.api.Test;
 import org.springframework.kafka.core.KafkaTemplate;

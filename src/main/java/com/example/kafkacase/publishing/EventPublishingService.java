@@ -1,7 +1,7 @@
 package com.example.kafkacase.publishing;
 
 import com.example.kafkacase.event.Event;
-import com.example.kafkacase.processing.ProcessedMessageService;
+import com.example.kafkacase.processing.persistence.ProcessedMessageService;
 import org.apache.kafka.common.KafkaException;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
