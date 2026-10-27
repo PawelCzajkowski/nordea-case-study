@@ -82,6 +82,10 @@ kubectl rollout restart deployment/message-service
 
 Pakiet `processing.persistence` skupia reguły tożsamości Event, idempotentny zapis Processed message, obsługę precyzji PostgreSQL i retencję. Jego wejściem jest [ProcessedMessageService](src/main/java/com/example/kafkacase/processing/persistence/ProcessedMessageService.java): rejestracja do publikacji, przetwarzanie, odczyt strony i usuwanie przeterminowanych danych. Magazyny, fingerprint i konfiguracja retencji są szczegółami pakietu. Harmonogram jedynie wywołuje operację sprzątania; moduł oblicza termin wygaśnięcia i zarządza transakcją obu usunięć.
 
+## Moduł Dead-letter message
+
+Publikację Dead-letter message obsługuje [DeadLetterPublisher](src/main/java/com/example/kafkacase/processing/DeadLetterPublisher.java). Konsument tworzy gotowy obiekt `DeadLetterMessage` z treścią i metadanymi błędu, a następnie przekazuje go do `publish(message)`. Publisher wybiera klucz i czeka na potwierdzenie brokera. Błąd przygotowania lub wysyłki pozwala dokończyć pozostałe Event, ale pozostawia partię do ponowienia. Timeout nie rozstrzyga, czy broker przyjął wiadomość, więc ponowienie może utworzyć kolejną Dead-letter message zgodnie z at-least-once.
+
 ## Testy i pokrycie kodu
 
 Uruchom pełny smoke test lokalnego środowiska Compose:

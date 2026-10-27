@@ -66,12 +66,11 @@ public class EventBatchConsumer {
                     record.topic(), record.partition(), record.offset(), attempts,
                     processingFailure.getClass().getSimpleName(), failureReason(processingFailure));
 
-            DeadLetterMessage message = deadLetterMessage(record, processingFailure, attempts, deserializationFailure);
-
             try {
+                DeadLetterMessage message = deadLetterMessage(record, processingFailure, attempts, deserializationFailure);
                 deadLetterPublisher.publish(message);
             } catch (RuntimeException publicationFailure) {
-                // Collect publication failures so the remaining Events can still reach their own outcomes.
+                // Preparation and publication failures leave the batch unconfirmed without blocking siblings.
                 LOGGER.error("Could not publish record {}-{}@{} to the dead-letter topic; batch will be replayed",
                         record.topic(), record.partition(), record.offset(), publicationFailure);
 
